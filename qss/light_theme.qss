@@ -1,0 +1,185 @@
+/* 主窗口样式 - 白天主题 */
+QMainWindow {
+    background-color: #f0f0f0;
+}
+
+/* 列表部件样式 */
+QListWidget {
+    background-color: #ffffff;
+    color: #333333;
+    border: 1px solid #cccccc;
+}
+
+/* 图形视图样式 */
+QGraphicsView {
+    background-color: #f5f5f5;
+    border: 1px solid #cccccc;
+}
+
+/* 分组框样式 */
+QGroupBox {
+    color: #333333;
+    border: 1px solid #cccccc;
+    border-radius: 5px;
+    margin-top: 10px;
+    background-color: #ffffff;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 5px 0 5px;
+    background-color: #ffffff;
+}
+
+/* 按钮样式 */
+QPushButton {
+    background-color: #e6e6e6;
+    color: #333333;
+    border: 1px solid #cccccc;
+    padding: 5px 10px;
+    border-radius: 3px;
+}
+
+QPushButton:hover {
+    background-color: #d9d9d9;
+    border-color: #adadad;
+}
+
+QPushButton:pressed {
+    background-color: #cccccc;
+}
+
+/* 标签样式 */
+QLabel {
+    color: #333333;
+}
+
+/* 菜单栏样式 */
+QMenuBar {
+    background-color: #f8f8f8;
+    color: #333333;
+    border: 1px solid #cccccc;
+}
+
+QMenuBar::item {
+    background-color: transparent;
+    padding: 5px 10px;
+}
+
+QMenuBar::item:selected {
+    background-color: #e6e6e6;
+}
+
+QMenuBar::item:pressed {
+    background-color: #d9d9d9;
+}
+
+/* 菜单样式 */
+QMenu {
+    background-color: #ffffff;
+    color: #333333;
+    border: 1px solid #cccccc;
+}
+
+QMenu::item {
+    background-color: transparent;
+    padding: 5px 20px 5px 20px;
+}
+
+QMenu::item:selected {
+    background-color: #e6e6e6;
+}
+
+/* 工具栏样式 */
+QToolBar {
+    background-color: #f8f8f8;
+    border: 1px solid #cccccc;
+    spacing: 3px;
+    padding: 2px;
+}
+
+QToolBar::separator {
+    width: 1px;
+    background-color: #cccccc;
+    margin: 2px 5px;
+}
+
+/* 状态栏样式 */
+QStatusBar {
+    background-color: #f8f8f8;
+    color: #333333;
+    border-top: 1px solid #cccccc;
+}
+
+/* 对话框按钮样式 */
+QDialogButtonBox QPushButton {
+    min-width: 80px;
+}
+
+/* 滚动区域样式 */
+QScrollArea {
+    border: none;
+    background-color: transparent;
+}
+
+QScrollBar:vertical {
+    background-color: #f0f0f0;
+    width: 12px;
+    border: 1px solid #cccccc;
+}
+
+QScrollBar::handle:vertical {
+    background-color: #c0c0c0;
+    border-radius: 6px;
+    min-height: 20px;
+    border: 1px solid #a0a0a0;
+}
+
+QScrollBar::handle:vertical:hover {
+    background-color: #a0a0a0;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+
+QScrollBar:horizontal {
+    background-color: #f0f0f0;
+    height: 12px;
+    border: 1px solid #cccccc;
+}
+
+QScrollBar::handle:horizontal {
+    background-color: #c0c0c0;
+    border-radius: 6px;
+    min-width: 20px;
+    border: 1px solid #a0a0a0;
+}
+
+QScrollBar::handle:horizontal:hover {
+    background-color: #a0a0a0;
+}
+
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+    width: 0px;
+}
+
+/* 特定控件调整 */
+QListWidget::item:selected {
+    background-color: #d9edf7;
+    color: #31708f;
+}
+
+QGroupBox {
+    font-weight: bold;
+}
+
+/* 标题标签样式（保持原样） */
+QLabel[style*="font-weight: bold"] {
+    color: #333333;
+}
+
+QLabel[style*="color: #aaaaaa"] {
+    color: #777777;
+}

@@ -1,0 +1,107 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yolo-label-tool"
+version = "1.0.0"
+description = "YOLO标注工具，支持手动标注和模型辅助标注"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "YoloLabelTool Team"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Multimedia :: Graphics",
+    "Topic :: Software Development :: User Interfaces",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "PySide6>=6.5.0",
+    "opencv-python>=4.8.0",
+    "numpy>=1.24.0",
+    "Pillow>=10.0.0",
+    "ultralytics>=8.0.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "mypy>=1.0.0",
+    "ruff>=0.0.0",
+    "black>=23.0.0",
+    "isort>=5.0.0",
+    "sphinx>=6.0.0",
+    "sphinx-rtd-theme>=1.0.0",
+    "pre-commit>=3.0.0",
+    "tox>=4.0.0",
+]
+
+[project.scripts]
+yolo-label-tool = "main:main"
+
+[project.urls]
+"Homepage" = "https://github.com/username/yolo-label-tool"
+"Bug Tracker" = "https://github.com/username/yolo-label-tool/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+exclude = ["tests*", "test*"]
+
+[tool.black]
+line-length = 88
+target-version = ['py38']
+
+[tool.isort]
+profile = "black"
+line_length = 88
+multi_line_output = 3
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.ruff]
+target-version = "py38"
+line-length = 88
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C",  # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # line too long, handled by black
+    "B008",  # do not perform function calls in argument defaults
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--tb=short",
+]

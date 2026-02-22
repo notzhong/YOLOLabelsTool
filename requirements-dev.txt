@@ -1,0 +1,20 @@
+# 开发依赖
+# 安装: pip install -r requirements-dev.txt
+
+# 测试框架
+pytest>=7.0.0
+pytest-cov>=4.0.0
+
+# 代码质量和类型检查
+mypy>=1.0.0
+ruff>=0.0.0
+black>=23.0.0
+isort>=5.0.0
+
+# 文档生成
+sphinx>=6.0.0
+sphinx-rtd-theme>=1.0.0
+
+# 其他开发工具
+pre-commit>=3.0.0
+tox>=4.0.0
