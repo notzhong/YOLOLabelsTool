@@ -250,6 +250,12 @@ class ClassManager:
         """获取下一个可用的类别ID"""
         return self._next_class_id
     
+    def clear_all(self) -> None:
+        """清空所有类别"""
+        self._classes.clear()
+        self._next_class_id = 0
+        self.logger.info("所有类别已清空")
+    
     def merge_classes(self, other_class_manager: 'ClassManager') -> Dict[int, int]:
         """
         合并两个类别管理器

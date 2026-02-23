@@ -326,7 +326,13 @@ class AnnotationRectItem(QGraphicsRectItem):
             # 确保当前项被选中
             if not self.is_selected:
                 self.set_selected(True)
-            scene.parent().delete_selected_annotation()
+            # 调用主窗口的删除方法
+            try:
+                scene.parent().delete_selected_annotation()
+            except Exception as e:
+                import traceback
+                self.logger.error(f"删除标注失败: {e}")
+                self.logger.error(traceback.format_exc())
 
 
 class MainWindow(QMainWindow):
@@ -556,7 +562,7 @@ class MainWindow(QMainWindow):
         self.graphics_view.setRenderHint(QPainter.SmoothPixmapTransform)
         self.graphics_view.setDragMode(QGraphicsView.ScrollHandDrag)
         
-        self.graphics_scene = QGraphicsScene()
+        self.graphics_scene = QGraphicsScene(self)
         self.graphics_view.setScene(self.graphics_scene)
         
         # 设置鼠标事件
@@ -609,6 +615,10 @@ class MainWindow(QMainWindow):
         self.btn_delete_class = QPushButton(tr("delete"))
         self.btn_delete_class.clicked.connect(self.delete_class)
         class_btn_layout.addWidget(self.btn_delete_class)
+        
+        self.btn_clear_classes = QPushButton(tr("clear_all_classes"))  # 清空按钮，文本将通过翻译设置
+        self.btn_clear_classes.clicked.connect(self.clear_all_classes)
+        class_btn_layout.addWidget(self.btn_clear_classes)
         
         class_layout.addLayout(class_btn_layout)
         
@@ -1005,10 +1015,11 @@ class MainWindow(QMainWindow):
             if self.config.has_option('preferences', 'language'):
                 saved_language = self.config.get('preferences', 'language')
                 if saved_language in ['zh_CN', 'en_US']:
-                    # 设置翻译管理器语言（但不立即更新UI，将在init_ui后应用）
+                    # 设置翻译管理器语言并加载翻译文件
                     from src.utils.i18n import TranslationManager
                     translation_manager = TranslationManager.instance()
                     translation_manager.current_language = saved_language
+                    translation_manager.load_translation_files()  # 新增：加载翻译文件
                     self.logger.info(f"加载保存的语言: {saved_language}")
     
     def save_settings(self):
@@ -1414,6 +1425,30 @@ class MainWindow(QMainWindow):
             
             # 更新状态
             self.update_status(tr("class_deleted").replace("{class_name}", class_name))
+    
+    def clear_all_classes(self):
+        """清空所有类别"""
+        if self.class_manager.get_class_count() == 0:
+            QMessageBox.information(self, tr("info"), tr("no_classes_to_clear"))
+            return
+        
+        reply = QMessageBox.question(
+            self, tr("confirm"),
+            tr("confirm_clear_all_classes"),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            # 清空所有类别
+            self.class_manager.clear_all()
+            self.update_class_list()
+            
+            # 重置选中的类别
+            self.selected_class_id = 0
+            
+            # 更新状态
+            self.update_status(tr("all_classes_cleared"))
     
     # ==================== 标注管理 ====================
     
@@ -2446,7 +2481,9 @@ class MainWindow(QMainWindow):
             self.btn_edit_class.setText(tr("edit"))
         if hasattr(self, 'btn_delete_class'):
             self.btn_delete_class.setText(tr("delete"))
-        
+        if hasattr(self, 'btn_clear_classes'):
+            self.btn_clear_classes.setText(tr("clear_all_classes"))
+
         if hasattr(self, 'btn_delete_annotation'):
             self.btn_delete_annotation.setText(tr("delete_selected_annotation"))
         if hasattr(self, 'btn_clear_all'):
