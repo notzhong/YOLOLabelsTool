@@ -195,3 +195,14 @@ tests/labels/
 
 # IDE history
 .history/
+
+# Test scripts (development/debugging)
+test_*.py
+*_test.py
+check_*.py
+simple_test.py
+final_test.py
+
+# Test data directories
+tests/coco8/
+runs/

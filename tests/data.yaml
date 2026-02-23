@@ -1,9 +1,0 @@
-names:
-- 邮箱
-- 主角
-- 赛利亚
-nc: 3
-path: G:\pyCode\YoloLabelTool\tests
-test: images/test
-train: images/train
-val: images/val

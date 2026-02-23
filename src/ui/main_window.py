@@ -582,6 +582,10 @@ class MainWindow(QMainWindow):
         title_label.setStyleSheet("font-weight: bold; font-size: 14px; color: #ffffff;")
         layout.addWidget(title_label)
         
+        # 创建垂直分割器，允许用户调整各区域高度
+        splitter = QSplitter(Qt.Vertical)
+        layout.addWidget(splitter, 1)  # 第二个参数为1表示填充剩余空间
+        
         # 类别列表
         class_group = QGroupBox("标注类别")
         class_layout = QVBoxLayout(class_group)
@@ -607,7 +611,7 @@ class MainWindow(QMainWindow):
         
         class_layout.addLayout(class_btn_layout)
         
-        layout.addWidget(class_group)
+        splitter.addWidget(class_group)
         
         # 标注操作
         annotation_group = QGroupBox("标注操作")
@@ -623,7 +627,7 @@ class MainWindow(QMainWindow):
         
         annotation_layout.addStretch()
         
-        layout.addWidget(annotation_group)
+        splitter.addWidget(annotation_group)
         
         # 导出操作
         export_group = QGroupBox("数据导出")
@@ -639,7 +643,7 @@ class MainWindow(QMainWindow):
         
         export_layout.addStretch()
         
-        layout.addWidget(export_group)
+        splitter.addWidget(export_group)
         
         # 标注统计面板
         self.stats_group = QGroupBox("标注统计")
@@ -670,7 +674,7 @@ class MainWindow(QMainWindow):
         
         stats_layout.addStretch()
         
-        layout.addWidget(self.stats_group)
+        splitter.addWidget(self.stats_group)
         
         # 模型信息面板（默认隐藏）
         self.model_info_group = QGroupBox("模型信息")
@@ -758,6 +762,11 @@ class MainWindow(QMainWindow):
         self.btn_unload_model.setEnabled(False)
         model_btn_layout.addWidget(self.btn_unload_model)
         
+        self.btn_train_model = QPushButton("训练模型")
+        self.btn_train_model.clicked.connect(self.train_model)
+        self.btn_train_model.setEnabled(True)
+        model_btn_layout.addWidget(self.btn_train_model)
+        
         self.btn_refresh_info = QPushButton("刷新")
         self.btn_refresh_info.clicked.connect(self.update_model_info_panel)
         model_btn_layout.addWidget(self.btn_refresh_info)
@@ -766,7 +775,13 @@ class MainWindow(QMainWindow):
         
         model_info_layout.addStretch()
         
-        layout.addWidget(self.model_info_group)
+        splitter.addWidget(self.model_info_group)
+        
+        # 设置分割器的初始大小比例
+        splitter.setSizes([150, 100, 100, 200, 150])
+        
+        # 设置分割器手柄样式
+        splitter.setHandleWidth(6)
         
         return panel
     
@@ -831,6 +846,11 @@ class MainWindow(QMainWindow):
         self.action_batch_auto_annotate = QAction("批量自动标注", self)
         self.action_batch_auto_annotate.setShortcut("Ctrl+Shift+A")
         self.action_batch_auto_annotate.triggered.connect(self.batch_auto_annotate)
+        
+        # 训练操作
+        self.action_train_model = QAction("训练模型", self)
+        self.action_train_model.setShortcut("Ctrl+T")
+        self.action_train_model.triggered.connect(self.train_model)
     
     def init_menus(self):
         """初始化菜单栏"""
@@ -884,6 +904,8 @@ class MainWindow(QMainWindow):
         model_menu = menubar.addMenu("模型")
         model_menu.addAction(self.action_load_model)
         model_menu.addAction(self.action_model_info)
+        model_menu.addSeparator()
+        model_menu.addAction(self.action_train_model)
         model_menu.addSeparator()
         model_menu.addAction(self.action_auto_annotate)
         model_menu.addAction(self.action_batch_auto_annotate)
@@ -1527,7 +1549,7 @@ class MainWindow(QMainWindow):
         
         output_dir = QFileDialog.getExistingDirectory(
             self, "选择输出目录", 
-            str(Path.home())
+            str(Path.cwd())
         )
         
         if output_dir:
@@ -1550,7 +1572,7 @@ class MainWindow(QMainWindow):
         
         output_dir = QFileDialog.getExistingDirectory(
             self, "选择输出目录", 
-            str(Path.home())
+            str(Path.cwd())
         )
         
         if output_dir:
@@ -2218,3 +2240,19 @@ class MainWindow(QMainWindow):
         
         # 启用卸载按钮
         self.btn_unload_model.setEnabled(True)
+    
+    def train_model(self):
+        """训练模型"""
+        # 检查是否加载了模型，如果有则获取模型路径作为默认值
+        default_model_path = ""
+        if self.model_manager.is_model_loaded():
+            model_info = self.model_manager.get_model_info()
+            default_model_path = model_info.get("path", "")
+        
+        # 创建训练配置对话框
+        from .train_dialog import TrainDialog
+        dialog = TrainDialog(self, default_model_path)
+        
+        if dialog.exec():
+            # 对话框已确认，训练将在对话框内部启动
+            self.update_status("训练配置完成，训练已启动")

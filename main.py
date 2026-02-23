@@ -5,49 +5,58 @@ YOLO 标注工具 - 主程序入口
 """
 
 import sys
-import os
 import traceback
 from pathlib import Path
 
-# 添加src目录到Python路径
-current_dir = Path(__file__).parent
-src_dir = current_dir / "src"
-if src_dir.exists():
-    sys.path.insert(0, str(src_dir))
 
-# 启用日志和异常捕获
-try:
-    from src.utils.logger import setup_exception_hook, get_logger_simple
-    
-    # 设置异常捕获钩子
-    setup_exception_hook()
-    
-    # 获取日志记录器
-    logger = get_logger_simple(__name__)
-    logger.info("=" * 60)
-    logger.info("YOLO Label Tool 启动")
-    logger.info(f"工作目录: {current_dir}")
-    logger.info(f"Python 版本: {sys.version}")
-    logger.info("=" * 60)
-    
-except Exception as e:
-    print(f"无法初始化日志系统: {e}")
-    print("程序将继续运行，但日志功能可能不可用")
+def setup_environment():
+    """设置环境，添加src目录到Python路径"""
+    current_dir = Path(__file__).parent
+    src_dir = current_dir / "src"
+    if src_dir.exists():
+        sys.path.insert(0, str(src_dir))
+    return current_dir
 
 
-from PySide6.QtWidgets import QApplication
-from src.ui.main_window import MainWindow
+def init_logging():
+    """初始化日志系统（仅在主进程中调用）"""
+    try:
+        from src.utils.logger import setup_exception_hook, get_logger_simple
+        
+        # 设置异常捕获钩子
+        setup_exception_hook()
+        
+        # 获取日志记录器
+        logger = get_logger_simple(__name__)
+        logger.info("=" * 60)
+        logger.info("YOLO Label Tool 启动")
+        logger.info(f"工作目录: {Path(__file__).parent}")
+        logger.info(f"Python 版本: {sys.version}")
+        logger.info("=" * 60)
+        
+        return logger
+        
+    except Exception as e:
+        print(f"无法初始化日志系统: {e}")
+        print("程序将继续运行，但日志功能可能不可用")
+        return None
 
 
 def main():
     """主程序入口"""
+    # 设置环境
+    setup_environment()
+    
+    # 初始化日志（仅主进程执行）
+    logger = init_logging()
+    
     try:
-        # 尝试获取日志记录器（如果之前初始化失败，这里会重新尝试）
-        try:
-            from src.utils.logger import get_logger_simple
-            logger = get_logger_simple(__name__)
-        except Exception:
-            # 如果无法获取日志记录器，创建一个简单的打印函数
+        # 延迟导入，避免多进程重复执行模块级代码
+        from PySide6.QtWidgets import QApplication
+        from src.ui.main_window import MainWindow
+        
+        # 如果日志初始化失败，创建一个简单的日志记录器
+        if logger is None:
             class SimpleLogger:
                 def info(self, msg): print(f"[INFO] {msg}")
                 def warning(self, msg): print(f"[WARNING] {msg}")
@@ -82,12 +91,9 @@ def main():
         print(error_msg)
         
         # 尝试记录到日志
-        try:
-            from src.utils.logger import get_logger_simple
-            logger = get_logger_simple(__name__)
+        if logger and hasattr(logger, 'critical'):
             logger.critical(error_msg)
-        except Exception:
-            # 如果无法记录到日志，至少打印到控制台
+        else:
             print(f"[CRITICAL] {error_msg}")
         
         return 1

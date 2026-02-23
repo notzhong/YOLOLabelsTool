@@ -256,13 +256,17 @@ class YOLOExporter:
         output_path = Path(output_dir)
         yaml_file = output_path / "data.yaml"
         
+        # 构建正确格式的names字典
+        class_names = class_manager.get_class_names()
+        names_dict = {i: name for i, name in enumerate(class_names)}
+        
         yaml_data = {
             "path": str(output_path.absolute()),
             "train": "images/train",
             "val": "images/val",
             "test": "images/test",
             "nc": class_manager.get_class_count(),
-            "names": class_manager.get_class_names()
+            "names": names_dict  # 使用字典格式
         }
         
         with open(yaml_file, 'w', encoding='utf-8') as f:
@@ -317,13 +321,18 @@ class YOLOExporter:
         
         # 导出简化的配置文件
         config_file = output_path / "data.yaml"
+        
+        # 构建正确格式的names字典
+        class_names = class_manager.get_class_names()
+        names_dict = {i: name for i, name in enumerate(class_names)}
+        
         config_data = {
             "path": str(output_path.absolute()),
             "train": ".",
             "val": ".",
             "test": ".",
             "nc": class_manager.get_class_count(),
-            "names": class_manager.get_class_names()
+            "names": names_dict  # 使用字典格式
         }
         
         with open(config_file, 'w', encoding='utf-8') as f:

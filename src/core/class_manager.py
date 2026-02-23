@@ -157,18 +157,19 @@ class ClassManager:
     
     def export_to_yaml(self, output_path: str, dataset_path: str = "./dataset"):
         """导出为YOLO格式的data.yaml文件"""
+        # 构建正确格式的names字典
+        names_dict = {}
+        for class_id in sorted(self._classes.keys()):
+            names_dict[class_id] = self.get_class_name(class_id)
+        
         yaml_data = {
             "path": dataset_path,
             "train": "images/train",
             "val": "images/val",
             "test": "images/test",
             "nc": self.get_class_count(),
-            "names": []
+            "names": names_dict  # 使用字典格式
         }
-        
-        # 按ID排序获取类别名称
-        for class_id in sorted(self._classes.keys()):
-            yaml_data["names"].append(self.get_class_name(class_id))
         
         # 保存YAML文件
         with open(output_path, 'w', encoding='utf-8') as f:
