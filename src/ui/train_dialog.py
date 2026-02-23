@@ -86,8 +86,21 @@ class TrainDialog(QDialog):
         tabs.addTab(augment_tab, "数据增强")
         self.create_augment_tab(augment_tab)
         
+        # 高级参数标签页
+        advanced_tab = QWidget()
+        tabs.addTab(advanced_tab, "高级参数")
+        self.create_advanced_tab(advanced_tab)
+        
         # 按钮布局
         button_layout = QHBoxLayout()
+        
+        # 重置默认参数按钮
+        self.btn_reset_default = QPushButton("重置默认参数")
+        self.btn_reset_default.clicked.connect(self.reset_to_defaults)
+        self.btn_reset_default.setStyleSheet("background-color: #2196F3; color: white;")
+        button_layout.addWidget(self.btn_reset_default)
+        
+        button_layout.addStretch()
         
         # 保存/加载配置按钮
         self.btn_save_config = QPushButton("保存配置")
@@ -300,9 +313,9 @@ class TrainDialog(QDialog):
         optimizer_layout.addRow("优化器:", self.optimizer_combo)
         
         self.lr0_spin = QDoubleSpinBox()
-        self.lr0_spin.setRange(0.00001, 0.01)
-        self.lr0_spin.setSingleStep(0.0001)
-        self.lr0_spin.setValue(0.0008)
+        self.lr0_spin.setRange(0.00001, 0.1)
+        self.lr0_spin.setSingleStep(0.001)
+        self.lr0_spin.setValue(0.01)
         self.lr0_spin.setDecimals(5)
         optimizer_layout.addRow("初始学习率 (lr0):", self.lr0_spin)
         
@@ -355,7 +368,136 @@ class TrainDialog(QDialog):
         self.flipud_spin.setValue(0.0)
         augment_layout.addRow("上下翻转概率:", self.flipud_spin)
         
+        # 添加HSV增强参数
+        self.hsv_h_spin = QDoubleSpinBox()
+        self.hsv_h_spin.setRange(0.0, 0.5)
+        self.hsv_h_spin.setSingleStep(0.01)
+        self.hsv_h_spin.setValue(0.015)
+        augment_layout.addRow("色调增强 (hsv_h):", self.hsv_h_spin)
+        
+        self.hsv_s_spin = QDoubleSpinBox()
+        self.hsv_s_spin.setRange(0.0, 1.0)
+        self.hsv_s_spin.setSingleStep(0.1)
+        self.hsv_s_spin.setValue(0.7)
+        augment_layout.addRow("饱和度增强 (hsv_s):", self.hsv_s_spin)
+        
+        self.hsv_v_spin = QDoubleSpinBox()
+        self.hsv_v_spin.setRange(0.0, 1.0)
+        self.hsv_v_spin.setSingleStep(0.1)
+        self.hsv_v_spin.setValue(0.4)
+        augment_layout.addRow("明度增强 (hsv_v):", self.hsv_v_spin)
+        
         layout.addWidget(augment_group)
+        layout.addStretch()
+    
+    def create_advanced_tab(self, parent: QWidget):
+        """创建高级参数标签页"""
+        layout = QVBoxLayout(parent)
+        
+        # 优化器高级参数
+        optimizer_advanced_group = QGroupBox("优化器高级参数")
+        optimizer_layout = QFormLayout(optimizer_advanced_group)
+        
+        self.weight_decay_spin = QDoubleSpinBox()
+        self.weight_decay_spin.setRange(0.0, 0.01)
+        self.weight_decay_spin.setSingleStep(0.0001)
+        self.weight_decay_spin.setValue(0.0005)
+        self.weight_decay_spin.setDecimals(4)
+        optimizer_layout.addRow("权重衰减 (weight_decay):", self.weight_decay_spin)
+        
+        self.momentum_spin = QDoubleSpinBox()
+        self.momentum_spin.setRange(0.0, 1.0)
+        self.momentum_spin.setSingleStep(0.01)
+        self.momentum_spin.setValue(0.937)
+        self.momentum_spin.setDecimals(3)
+        optimizer_layout.addRow("动量 (momentum):", self.momentum_spin)
+        
+        layout.addWidget(optimizer_advanced_group)
+        
+        # 学习率预热
+        warmup_group = QGroupBox("学习率预热")
+        warmup_layout = QFormLayout(warmup_group)
+        
+        self.warmup_epochs_spin = QDoubleSpinBox()
+        self.warmup_epochs_spin.setRange(0.0, 10.0)
+        self.warmup_epochs_spin.setSingleStep(0.5)
+        self.warmup_epochs_spin.setValue(3.0)
+        warmup_layout.addRow("预热轮数 (warmup_epochs):", self.warmup_epochs_spin)
+        
+        self.warmup_momentum_spin = QDoubleSpinBox()
+        self.warmup_momentum_spin.setRange(0.0, 1.0)
+        self.warmup_momentum_spin.setSingleStep(0.1)
+        self.warmup_momentum_spin.setValue(0.8)
+        warmup_layout.addRow("预热动量 (warmup_momentum):", self.warmup_momentum_spin)
+        
+        self.warmup_bias_lr_spin = QDoubleSpinBox()
+        self.warmup_bias_lr_spin.setRange(0.0, 0.5)
+        self.warmup_bias_lr_spin.setSingleStep(0.05)
+        self.warmup_bias_lr_spin.setValue(0.1)
+        warmup_layout.addRow("预热偏置学习率 (warmup_bias_lr):", self.warmup_bias_lr_spin)
+        
+        layout.addWidget(warmup_group)
+        
+        # 损失权重
+        loss_weights_group = QGroupBox("损失权重")
+        loss_layout = QFormLayout(loss_weights_group)
+        
+        self.box_weight_spin = QDoubleSpinBox()
+        self.box_weight_spin.setRange(0.0, 20.0)
+        self.box_weight_spin.setSingleStep(0.5)
+        self.box_weight_spin.setValue(7.5)
+        loss_layout.addRow("边框损失权重 (box):", self.box_weight_spin)
+        
+        self.cls_weight_spin = QDoubleSpinBox()
+        self.cls_weight_spin.setRange(0.0, 5.0)
+        self.cls_weight_spin.setSingleStep(0.1)
+        self.cls_weight_spin.setValue(0.5)
+        loss_layout.addRow("分类损失权重 (cls):", self.cls_weight_spin)
+        
+        self.dfl_weight_spin = QDoubleSpinBox()
+        self.dfl_weight_spin.setRange(0.0, 5.0)
+        self.dfl_weight_spin.setSingleStep(0.1)
+        self.dfl_weight_spin.setValue(1.5)
+        loss_layout.addRow("分布焦点损失权重 (dfl):", self.dfl_weight_spin)
+        
+        layout.addWidget(loss_weights_group)
+        
+        # 正则化和其他
+        other_advanced_group = QGroupBox("正则化和其他")
+        other_layout = QFormLayout(other_advanced_group)
+        
+        self.label_smoothing_spin = QDoubleSpinBox()
+        self.label_smoothing_spin.setRange(0.0, 0.2)
+        self.label_smoothing_spin.setSingleStep(0.01)
+        self.label_smoothing_spin.setValue(0.0)
+        other_layout.addRow("标签平滑 (label_smoothing):", self.label_smoothing_spin)
+        
+        self.dropout_spin = QDoubleSpinBox()
+        self.dropout_spin.setRange(0.0, 0.5)
+        self.dropout_spin.setSingleStep(0.05)
+        self.dropout_spin.setValue(0.0)
+        other_layout.addRow("Dropout率 (dropout):", self.dropout_spin)
+        
+        self.fliplr_spin = QDoubleSpinBox()
+        self.fliplr_spin.setRange(0.0, 1.0)
+        self.fliplr_spin.setSingleStep(0.1)
+        self.fliplr_spin.setValue(0.5)
+        other_layout.addRow("左右翻转概率 (fliplr):", self.fliplr_spin)
+        
+        self.mosaic_spin = QDoubleSpinBox()
+        self.mosaic_spin.setRange(0.0, 1.0)
+        self.mosaic_spin.setSingleStep(0.1)
+        self.mosaic_spin.setValue(1.0)
+        other_layout.addRow("马赛克增强概率 (mosaic):", self.mosaic_spin)
+        
+        self.copy_paste_spin = QDoubleSpinBox()
+        self.copy_paste_spin.setRange(0.0, 1.0)
+        self.copy_paste_spin.setSingleStep(0.1)
+        self.copy_paste_spin.setValue(0.0)
+        other_layout.addRow("复制粘贴增强概率 (copy_paste):", self.copy_paste_spin)
+        
+        layout.addWidget(other_advanced_group)
+        
         layout.addStretch()
     
     def on_resume_toggled(self, checked: bool):
@@ -515,6 +657,24 @@ class TrainDialog(QDialog):
         config['shear'] = self.shear_spin.value()
         config['perspective'] = self.perspective_spin.value()
         config['flipud'] = self.flipud_spin.value()
+        config['hsv_h'] = self.hsv_h_spin.value()
+        config['hsv_s'] = self.hsv_s_spin.value()
+        config['hsv_v'] = self.hsv_v_spin.value()
+        
+        # 高级参数
+        config['weight_decay'] = self.weight_decay_spin.value()
+        config['momentum'] = self.momentum_spin.value()
+        config['warmup_epochs'] = self.warmup_epochs_spin.value()
+        config['warmup_momentum'] = self.warmup_momentum_spin.value()
+        config['warmup_bias_lr'] = self.warmup_bias_lr_spin.value()
+        config['box'] = self.box_weight_spin.value()
+        config['cls'] = self.cls_weight_spin.value()
+        config['dfl'] = self.dfl_weight_spin.value()
+        config['label_smoothing'] = self.label_smoothing_spin.value()
+        config['dropout'] = self.dropout_spin.value()
+        config['fliplr'] = self.fliplr_spin.value()
+        config['mosaic'] = self.mosaic_spin.value()
+        config['copy_paste'] = self.copy_paste_spin.value()
         
         return config
     
@@ -588,9 +748,27 @@ class TrainDialog(QDialog):
         self.shear_spin.setValue(self.config.get('shear', 0.0))
         self.perspective_spin.setValue(self.config.get('perspective', 0.0))
         self.flipud_spin.setValue(self.config.get('flipud', 0.0))
+        self.hsv_h_spin.setValue(self.config.get('hsv_h', 0.015))
+        self.hsv_s_spin.setValue(self.config.get('hsv_s', 0.7))
+        self.hsv_v_spin.setValue(self.config.get('hsv_v', 0.4))
         
         # 启用/禁用增强参数控件
         self.on_augment_toggled(augment)
+        
+        # 高级参数
+        self.weight_decay_spin.setValue(self.config.get('weight_decay', 0.0005))
+        self.momentum_spin.setValue(self.config.get('momentum', 0.937))
+        self.warmup_epochs_spin.setValue(self.config.get('warmup_epochs', 3.0))
+        self.warmup_momentum_spin.setValue(self.config.get('warmup_momentum', 0.8))
+        self.warmup_bias_lr_spin.setValue(self.config.get('warmup_bias_lr', 0.1))
+        self.box_weight_spin.setValue(self.config.get('box', 7.5))
+        self.cls_weight_spin.setValue(self.config.get('cls', 0.5))
+        self.dfl_weight_spin.setValue(self.config.get('dfl', 1.5))
+        self.label_smoothing_spin.setValue(self.config.get('label_smoothing', 0.0))
+        self.dropout_spin.setValue(self.config.get('dropout', 0.0))
+        self.fliplr_spin.setValue(self.config.get('fliplr', 0.5))
+        self.mosaic_spin.setValue(self.config.get('mosaic', 1.0))
+        self.copy_paste_spin.setValue(self.config.get('copy_paste', 0.0))
     
     def validate_config(self) -> bool:
         """验证配置"""
@@ -713,7 +891,24 @@ class TrainDialog(QDialog):
             self.shear_spin,
             self.perspective_spin,
             self.flipud_spin,
-            self.lr0_spin
+            self.lr0_spin,
+            # 新增的数值控件
+            self.hsv_h_spin,
+            self.hsv_s_spin,
+            self.hsv_v_spin,
+            self.weight_decay_spin,
+            self.momentum_spin,
+            self.warmup_epochs_spin,
+            self.warmup_momentum_spin,
+            self.warmup_bias_lr_spin,
+            self.box_weight_spin,
+            self.cls_weight_spin,
+            self.dfl_weight_spin,
+            self.label_smoothing_spin,
+            self.dropout_spin,
+            self.fliplr_spin,
+            self.mosaic_spin,
+            self.copy_paste_spin
         ]
         
         for spin_box in spin_boxes:
@@ -779,6 +974,43 @@ class TrainDialog(QDialog):
     def log_message(self, message: str):
         """记录消息到控制台"""
         print(f"[TrainDialog] {message}")
+    
+    def reset_to_defaults(self):
+        """重置所有参数到市场最优默认值"""
+        reply = QMessageBox.question(
+            self,
+            "重置默认参数",
+            "确定要重置所有参数到市场最优默认值吗？\n当前的自定义配置将被覆盖。",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            # 使用训练器的默认配置（市场最优参数）
+            default_config = self.trainer.get_default_config()
+            
+            # 保留文件路径信息（如果已设置）
+            if self.model_path_edit.text():
+                default_config['model_path'] = self.model_path_edit.text()
+            if self.data_yaml_edit.text():
+                default_config['data_yaml'] = self.data_yaml_edit.text()
+            if self.output_dir_edit.text():
+                default_config['output_dir'] = self.output_dir_edit.text()
+            
+            # 更新配置
+            self.config.update(default_config)
+            
+            # 重新加载到UI
+            self.load_config_to_ui()
+            
+            # 标记配置已修改
+            self.config_modified = True
+            
+            QMessageBox.information(
+                self,
+                "重置成功",
+                "所有参数已重置到市场最优默认值\n（文件路径信息已保留）"
+            )
     
     def start_training(self):
         """开始训练"""
