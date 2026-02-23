@@ -17,6 +17,7 @@ from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import QFont
 
 from yolo_tool import YOLOTrainer
+from src.utils.i18n import tr
 
 
 class TrainDialog(QDialog):
@@ -51,7 +52,7 @@ class TrainDialog(QDialog):
         self.load_last_config()
         
         # 设置窗口属性
-        self.setWindowTitle("YOLO模型训练配置")
+        self.setWindowTitle(tr("train_config"))
         self.setModal(True)
         self.resize(800, 700)
         
@@ -68,34 +69,34 @@ class TrainDialog(QDialog):
         
         # 基本设置标签页
         basic_tab = QWidget()
-        tabs.addTab(basic_tab, "基本设置")
+        tabs.addTab(basic_tab, tr("basic_settings"))
         self.create_basic_tab(basic_tab)
         
         # 训练参数标签页
         params_tab = QWidget()
-        tabs.addTab(params_tab, "训练参数")
+        tabs.addTab(params_tab, tr("training_parameters"))
         self.create_params_tab(params_tab)
         
         # 优化器标签页
         optimizer_tab = QWidget()
-        tabs.addTab(optimizer_tab, "优化器")
+        tabs.addTab(optimizer_tab, tr("optimizer"))
         self.create_optimizer_tab(optimizer_tab)
         
         # 数据增强标签页
         augment_tab = QWidget()
-        tabs.addTab(augment_tab, "数据增强")
+        tabs.addTab(augment_tab, tr("data_augmentation"))
         self.create_augment_tab(augment_tab)
         
         # 高级参数标签页
         advanced_tab = QWidget()
-        tabs.addTab(advanced_tab, "高级参数")
+        tabs.addTab(advanced_tab, tr("advanced_params"))
         self.create_advanced_tab(advanced_tab)
         
         # 按钮布局
         button_layout = QHBoxLayout()
         
         # 重置默认参数按钮
-        self.btn_reset_default = QPushButton("重置默认参数")
+        self.btn_reset_default = QPushButton(tr("reset_default_params_btn"))
         self.btn_reset_default.clicked.connect(self.reset_to_defaults)
         self.btn_reset_default.setStyleSheet("background-color: #2196F3; color: white;")
         button_layout.addWidget(self.btn_reset_default)
@@ -103,23 +104,23 @@ class TrainDialog(QDialog):
         button_layout.addStretch()
         
         # 保存/加载配置按钮
-        self.btn_save_config = QPushButton("保存配置")
+        self.btn_save_config = QPushButton(tr("save_config_btn"))
         self.btn_save_config.clicked.connect(self.save_config)
         button_layout.addWidget(self.btn_save_config)
         
-        self.btn_load_config = QPushButton("加载配置")
+        self.btn_load_config = QPushButton(tr("load_config_btn"))
         self.btn_load_config.clicked.connect(self.load_config)
         button_layout.addWidget(self.btn_load_config)
         
         button_layout.addStretch()
         
         # 开始/取消按钮
-        self.btn_start = QPushButton("开始训练")
+        self.btn_start = QPushButton(tr("start_training_btn"))
         self.btn_start.clicked.connect(self.start_training)
         self.btn_start.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
         button_layout.addWidget(self.btn_start)
         
-        self.btn_cancel = QPushButton("取消")
+        self.btn_cancel = QPushButton(tr("cancel_btn"))
         self.btn_cancel.clicked.connect(self.reject)
         button_layout.addWidget(self.btn_cancel)
         
@@ -130,64 +131,64 @@ class TrainDialog(QDialog):
         layout = QVBoxLayout(parent)
         
         # 预训练模型
-        model_group = QGroupBox("预训练模型")
+        model_group = QGroupBox(tr("pretrained_model"))
         model_layout = QFormLayout(model_group)
         
         self.model_path_edit = QLineEdit()
-        self.model_path_edit.setPlaceholderText("选择预训练模型文件 (.pt)")
-        model_layout.addRow("模型路径:", self.model_path_edit)
+        self.model_path_edit.setPlaceholderText(tr("select_pretrained_model_file"))
+        model_layout.addRow(tr("model_path_label"), self.model_path_edit)
         
-        browse_btn = QPushButton("浏览...")
+        browse_btn = QPushButton(tr("browse_button_label"))
         browse_btn.clicked.connect(self.browse_model_file)
         model_layout.addRow("", browse_btn)
         
         layout.addWidget(model_group)
         
         # 数据集配置
-        data_group = QGroupBox("数据集配置")
+        data_group = QGroupBox(tr("dataset_config"))
         data_layout = QFormLayout(data_group)
         
         self.data_yaml_edit = QLineEdit()
-        self.data_yaml_edit.setPlaceholderText("选择数据集配置文件 (.yaml)")
-        data_layout.addRow("数据集YAML:", self.data_yaml_edit)
+        self.data_yaml_edit.setPlaceholderText(tr("select_dataset_config_file"))
+        data_layout.addRow(tr("data_yaml_label"), self.data_yaml_edit)
         
-        browse_yaml_btn = QPushButton("浏览...")
+        browse_yaml_btn = QPushButton(tr("browse_button_label"))
         browse_yaml_btn.clicked.connect(self.browse_data_yaml)
         data_layout.addRow("", browse_yaml_btn)
         
         layout.addWidget(data_group)
         
         # 输出设置
-        output_group = QGroupBox("输出设置")
+        output_group = QGroupBox(tr("output_settings"))
         output_layout = QFormLayout(output_group)
         
         self.output_dir_edit = QLineEdit()
-        self.output_dir_edit.setPlaceholderText("选择训练结果输出目录")
-        output_layout.addRow("输出目录:", self.output_dir_edit)
+        self.output_dir_edit.setPlaceholderText(tr("select_output_dir"))
+        output_layout.addRow(tr("output_dir_label"), self.output_dir_edit)
         
-        browse_output_btn = QPushButton("浏览...")
+        browse_output_btn = QPushButton(tr("browse_button_label"))
         browse_output_btn.clicked.connect(self.browse_output_dir)
         output_layout.addRow("", browse_output_btn)
         
         self.run_name_edit = QLineEdit("train")
-        output_layout.addRow("运行名称:", self.run_name_edit)
+        output_layout.addRow(tr("running_name_label"), self.run_name_edit)
         
         layout.addWidget(output_group)
         
         # 恢复训练
-        resume_group = QGroupBox("恢复训练")
+        resume_group = QGroupBox(tr("resume_training"))
         resume_layout = QFormLayout(resume_group)
         
-        self.resume_checkbox = QCheckBox("恢复训练")
+        self.resume_checkbox = QCheckBox(tr("resume_training_checkbox"))
         self.resume_checkbox.toggled.connect(self.on_resume_toggled)
         resume_layout.addRow(self.resume_checkbox)
         
         self.resume_path_edit = QLineEdit()
-        self.resume_path_edit.setPlaceholderText("选择检查点文件 (.pt)")
+        self.resume_path_edit.setPlaceholderText(tr("select_checkpoint_file"))
         self.resume_path_edit.setEnabled(False)
-        resume_layout.addRow("检查点:", self.resume_path_edit)
+        resume_layout.addRow(tr("resume_checkpoint_label"), self.resume_path_edit)
         
-        browse_resume_btn = QPushButton("浏览...")
+        browse_resume_btn = QPushButton(tr("browse_button_label"))
         browse_resume_btn.clicked.connect(self.browse_resume_file)
         browse_resume_btn.setEnabled(False)
         self.resume_browse_btn = browse_resume_btn
@@ -202,33 +203,33 @@ class TrainDialog(QDialog):
         layout = QVBoxLayout(parent)
         
         # 训练参数
-        train_group = QGroupBox("训练参数")
+        train_group = QGroupBox(tr("training_parameters"))
         train_layout = QFormLayout(train_group)
         
         self.epochs_spin = QSpinBox()
         self.epochs_spin.setRange(1, 1000)
         self.epochs_spin.setValue(300)
-        train_layout.addRow("训练轮数 (epochs):", self.epochs_spin)
+        train_layout.addRow(tr("epochs_label"), self.epochs_spin)
         
         self.imgsz_spin = QSpinBox()
         self.imgsz_spin.setRange(64, 4096)
         self.imgsz_spin.setValue(640)
-        train_layout.addRow("输入图像尺寸:", self.imgsz_spin)
+        train_layout.addRow(tr("imgsz_label"), self.imgsz_spin)
         
         self.batch_spin = QSpinBox()
         self.batch_spin.setRange(1, 128)
         self.batch_spin.setValue(16)
-        train_layout.addRow("批量大小 (batch):", self.batch_spin)
+        train_layout.addRow(tr("batch_label"), self.batch_spin)
         
         self.workers_spin = QSpinBox()
         self.workers_spin.setRange(1, 32)
         self.workers_spin.setValue(8)
-        train_layout.addRow("数据加载线程数:", self.workers_spin)
+        train_layout.addRow(tr("workers_label"), self.workers_spin)
         
         layout.addWidget(train_group)
         
         # 设备设置
-        device_group = QGroupBox("设备设置")
+        device_group = QGroupBox(tr("device_settings"))
         device_layout = QFormLayout(device_group)
         
         self.device_combo = QComboBox()
@@ -260,40 +261,40 @@ class TrainDialog(QDialog):
             self.device_combo.addItems(["0 (GPU)", "-1 (CPU)"])
             self.device_combo.setToolTip("PyTorch未安装，设备选择可能不准确")
         
-        device_layout.addRow("训练设备:", self.device_combo)
+        device_layout.addRow(tr("device_label"), self.device_combo)
         
         layout.addWidget(device_group)
         
         # 其他设置
-        other_group = QGroupBox("其他设置")
+        other_group = QGroupBox(tr("other_settings"))
         other_layout = QFormLayout(other_group)
         
         self.patience_spin = QSpinBox()
         self.patience_spin.setRange(1, 100)
         self.patience_spin.setValue(40)
-        other_layout.addRow("早停耐心值:", self.patience_spin)
+        other_layout.addRow(tr("patience_label"), self.patience_spin)
         
         self.close_mosaic_spin = QSpinBox()
         self.close_mosaic_spin.setRange(0, 100)
         self.close_mosaic_spin.setValue(40)
-        other_layout.addRow("关闭马赛克增强轮数:", self.close_mosaic_spin)
+        other_layout.addRow(tr("close_mosaic_label"), self.close_mosaic_spin)
         
-        self.rect_checkbox = QCheckBox("矩形训练")
+        self.rect_checkbox = QCheckBox(tr("rectangular_training"))
         other_layout.addRow(self.rect_checkbox)
         
-        self.cache_checkbox = QCheckBox("缓存数据集")
+        self.cache_checkbox = QCheckBox(tr("cache_dataset"))
         self.cache_checkbox.setChecked(True)
         other_layout.addRow(self.cache_checkbox)
         
-        self.amp_checkbox = QCheckBox("自动混合精度训练")
+        self.amp_checkbox = QCheckBox(tr("amp_training"))
         self.amp_checkbox.setChecked(True)
         other_layout.addRow(self.amp_checkbox)
         
-        self.plots_checkbox = QCheckBox("生成可视化图表")
+        self.plots_checkbox = QCheckBox(tr("generate_plots"))
         self.plots_checkbox.setChecked(True)
         other_layout.addRow(self.plots_checkbox)
         
-        self.verbose_checkbox = QCheckBox("详细日志输出")
+        self.verbose_checkbox = QCheckBox(tr("verbose_logging"))
         self.verbose_checkbox.setChecked(True)
         other_layout.addRow(self.verbose_checkbox)
         
@@ -305,21 +306,21 @@ class TrainDialog(QDialog):
         """创建优化器标签页"""
         layout = QVBoxLayout(parent)
         
-        optimizer_group = QGroupBox("优化器设置")
+        optimizer_group = QGroupBox(tr("optimizer_settings"))
         optimizer_layout = QFormLayout(optimizer_group)
         
         self.optimizer_combo = QComboBox()
         self.optimizer_combo.addItems(["AdamW", "SGD", "Adam", "RMSprop"])
-        optimizer_layout.addRow("优化器:", self.optimizer_combo)
+        optimizer_layout.addRow(tr("optimizer"), self.optimizer_combo)
         
         self.lr0_spin = QDoubleSpinBox()
         self.lr0_spin.setRange(0.00001, 0.1)
         self.lr0_spin.setSingleStep(0.001)
         self.lr0_spin.setValue(0.01)
         self.lr0_spin.setDecimals(5)
-        optimizer_layout.addRow("初始学习率 (lr0):", self.lr0_spin)
+        optimizer_layout.addRow(tr("initial_learning_rate"), self.lr0_spin)
         
-        self.cos_lr_checkbox = QCheckBox("使用余弦退火学习率调度")
+        self.cos_lr_checkbox = QCheckBox(tr("use_cosine_lr"))
         self.cos_lr_checkbox.setChecked(True)
         optimizer_layout.addRow(self.cos_lr_checkbox)
         
@@ -330,10 +331,10 @@ class TrainDialog(QDialog):
         """创建数据增强标签页"""
         layout = QVBoxLayout(parent)
         
-        augment_group = QGroupBox("数据增强")
+        augment_group = QGroupBox(tr("data_augmentation_settings"))
         augment_layout = QFormLayout(augment_group)
         
-        self.augment_checkbox = QCheckBox("启用数据增强")
+        self.augment_checkbox = QCheckBox(tr("enable_augmentation"))
         self.augment_checkbox.setChecked(True)
         self.augment_checkbox.toggled.connect(self.on_augment_toggled)
         augment_layout.addRow(self.augment_checkbox)
@@ -342,50 +343,50 @@ class TrainDialog(QDialog):
         self.mixup_spin.setRange(0.0, 1.0)
         self.mixup_spin.setSingleStep(0.1)
         self.mixup_spin.setValue(0.0)
-        augment_layout.addRow("Mixup增强强度:", self.mixup_spin)
+        augment_layout.addRow(tr("mixup_augmentation_strength"), self.mixup_spin)
         
         self.degrees_spin = QDoubleSpinBox()
         self.degrees_spin.setRange(0.0, 180.0)
         self.degrees_spin.setSingleStep(1.0)
         self.degrees_spin.setValue(0.0)
-        augment_layout.addRow("旋转角度 (degrees):", self.degrees_spin)
+        augment_layout.addRow(tr("rotation_degrees_label"), self.degrees_spin)
         
         self.shear_spin = QDoubleSpinBox()
         self.shear_spin.setRange(0.0, 1.0)
         self.shear_spin.setSingleStep(0.1)
         self.shear_spin.setValue(0.0)
-        augment_layout.addRow("剪切变换强度 (shear):", self.shear_spin)
+        augment_layout.addRow(tr("shear_transformation_strength"), self.shear_spin)
         
         self.perspective_spin = QDoubleSpinBox()
         self.perspective_spin.setRange(0.0, 1.0)
         self.perspective_spin.setSingleStep(0.1)
         self.perspective_spin.setValue(0.0)
-        augment_layout.addRow("透视变换强度:", self.perspective_spin)
+        augment_layout.addRow(tr("perspective_transformation_strength_label"), self.perspective_spin)
         
         self.flipud_spin = QDoubleSpinBox()
         self.flipud_spin.setRange(0.0, 1.0)
         self.flipud_spin.setSingleStep(0.1)
         self.flipud_spin.setValue(0.0)
-        augment_layout.addRow("上下翻转概率:", self.flipud_spin)
+        augment_layout.addRow(tr("flip_up_down_probability_label"), self.flipud_spin)
         
         # 添加HSV增强参数
         self.hsv_h_spin = QDoubleSpinBox()
         self.hsv_h_spin.setRange(0.0, 0.5)
         self.hsv_h_spin.setSingleStep(0.01)
         self.hsv_h_spin.setValue(0.015)
-        augment_layout.addRow("色调增强 (hsv_h):", self.hsv_h_spin)
+        augment_layout.addRow(tr("hue_augmentation"), self.hsv_h_spin)
         
         self.hsv_s_spin = QDoubleSpinBox()
         self.hsv_s_spin.setRange(0.0, 1.0)
         self.hsv_s_spin.setSingleStep(0.1)
         self.hsv_s_spin.setValue(0.7)
-        augment_layout.addRow("饱和度增强 (hsv_s):", self.hsv_s_spin)
+        augment_layout.addRow(tr("saturation_augmentation"), self.hsv_s_spin)
         
         self.hsv_v_spin = QDoubleSpinBox()
         self.hsv_v_spin.setRange(0.0, 1.0)
         self.hsv_v_spin.setSingleStep(0.1)
         self.hsv_v_spin.setValue(0.4)
-        augment_layout.addRow("明度增强 (hsv_v):", self.hsv_v_spin)
+        augment_layout.addRow(tr("value_augmentation"), self.hsv_v_spin)
         
         layout.addWidget(augment_group)
         layout.addStretch()
@@ -395,7 +396,7 @@ class TrainDialog(QDialog):
         layout = QVBoxLayout(parent)
         
         # 优化器高级参数
-        optimizer_advanced_group = QGroupBox("优化器高级参数")
+        optimizer_advanced_group = QGroupBox(tr("optimizer_advanced_params"))
         optimizer_layout = QFormLayout(optimizer_advanced_group)
         
         self.weight_decay_spin = QDoubleSpinBox()
@@ -403,98 +404,98 @@ class TrainDialog(QDialog):
         self.weight_decay_spin.setSingleStep(0.0001)
         self.weight_decay_spin.setValue(0.0005)
         self.weight_decay_spin.setDecimals(4)
-        optimizer_layout.addRow("权重衰减 (weight_decay):", self.weight_decay_spin)
+        optimizer_layout.addRow(tr("weight_decay"), self.weight_decay_spin)
         
         self.momentum_spin = QDoubleSpinBox()
         self.momentum_spin.setRange(0.0, 1.0)
         self.momentum_spin.setSingleStep(0.01)
         self.momentum_spin.setValue(0.937)
         self.momentum_spin.setDecimals(3)
-        optimizer_layout.addRow("动量 (momentum):", self.momentum_spin)
+        optimizer_layout.addRow(tr("momentum"), self.momentum_spin)
         
         layout.addWidget(optimizer_advanced_group)
         
         # 学习率预热
-        warmup_group = QGroupBox("学习率预热")
+        warmup_group = QGroupBox(tr("learning_rate_warmup"))
         warmup_layout = QFormLayout(warmup_group)
         
         self.warmup_epochs_spin = QDoubleSpinBox()
         self.warmup_epochs_spin.setRange(0.0, 10.0)
         self.warmup_epochs_spin.setSingleStep(0.5)
         self.warmup_epochs_spin.setValue(3.0)
-        warmup_layout.addRow("预热轮数 (warmup_epochs):", self.warmup_epochs_spin)
+        warmup_layout.addRow(tr("warmup_epochs"), self.warmup_epochs_spin)
         
         self.warmup_momentum_spin = QDoubleSpinBox()
         self.warmup_momentum_spin.setRange(0.0, 1.0)
         self.warmup_momentum_spin.setSingleStep(0.1)
         self.warmup_momentum_spin.setValue(0.8)
-        warmup_layout.addRow("预热动量 (warmup_momentum):", self.warmup_momentum_spin)
+        warmup_layout.addRow(tr("warmup_momentum"), self.warmup_momentum_spin)
         
         self.warmup_bias_lr_spin = QDoubleSpinBox()
         self.warmup_bias_lr_spin.setRange(0.0, 0.5)
         self.warmup_bias_lr_spin.setSingleStep(0.05)
         self.warmup_bias_lr_spin.setValue(0.1)
-        warmup_layout.addRow("预热偏置学习率 (warmup_bias_lr):", self.warmup_bias_lr_spin)
+        warmup_layout.addRow(tr("warmup_bias_lr"), self.warmup_bias_lr_spin)
         
         layout.addWidget(warmup_group)
         
         # 损失权重
-        loss_weights_group = QGroupBox("损失权重")
+        loss_weights_group = QGroupBox(tr("loss_weights"))
         loss_layout = QFormLayout(loss_weights_group)
         
         self.box_weight_spin = QDoubleSpinBox()
         self.box_weight_spin.setRange(0.0, 20.0)
         self.box_weight_spin.setSingleStep(0.5)
         self.box_weight_spin.setValue(7.5)
-        loss_layout.addRow("边框损失权重 (box):", self.box_weight_spin)
+        loss_layout.addRow(tr("box_loss_weight"), self.box_weight_spin)
         
         self.cls_weight_spin = QDoubleSpinBox()
         self.cls_weight_spin.setRange(0.0, 5.0)
         self.cls_weight_spin.setSingleStep(0.1)
         self.cls_weight_spin.setValue(0.5)
-        loss_layout.addRow("分类损失权重 (cls):", self.cls_weight_spin)
+        loss_layout.addRow(tr("cls_loss_weight"), self.cls_weight_spin)
         
         self.dfl_weight_spin = QDoubleSpinBox()
         self.dfl_weight_spin.setRange(0.0, 5.0)
         self.dfl_weight_spin.setSingleStep(0.1)
         self.dfl_weight_spin.setValue(1.5)
-        loss_layout.addRow("分布焦点损失权重 (dfl):", self.dfl_weight_spin)
+        loss_layout.addRow(tr("dfl_loss_weight"), self.dfl_weight_spin)
         
         layout.addWidget(loss_weights_group)
         
         # 正则化和其他
-        other_advanced_group = QGroupBox("正则化和其他")
+        other_advanced_group = QGroupBox(tr("regularization_and_other_section"))
         other_layout = QFormLayout(other_advanced_group)
         
         self.label_smoothing_spin = QDoubleSpinBox()
         self.label_smoothing_spin.setRange(0.0, 0.2)
         self.label_smoothing_spin.setSingleStep(0.01)
         self.label_smoothing_spin.setValue(0.0)
-        other_layout.addRow("标签平滑 (label_smoothing):", self.label_smoothing_spin)
+        other_layout.addRow(tr("label_smoothing"), self.label_smoothing_spin)
         
         self.dropout_spin = QDoubleSpinBox()
         self.dropout_spin.setRange(0.0, 0.5)
         self.dropout_spin.setSingleStep(0.05)
         self.dropout_spin.setValue(0.0)
-        other_layout.addRow("Dropout率 (dropout):", self.dropout_spin)
+        other_layout.addRow(tr("dropout_rate"), self.dropout_spin)
         
         self.fliplr_spin = QDoubleSpinBox()
         self.fliplr_spin.setRange(0.0, 1.0)
         self.fliplr_spin.setSingleStep(0.1)
         self.fliplr_spin.setValue(0.5)
-        other_layout.addRow("左右翻转概率 (fliplr):", self.fliplr_spin)
+        other_layout.addRow(tr("flip_lr_probability"), self.fliplr_spin)
         
         self.mosaic_spin = QDoubleSpinBox()
         self.mosaic_spin.setRange(0.0, 1.0)
         self.mosaic_spin.setSingleStep(0.1)
         self.mosaic_spin.setValue(1.0)
-        other_layout.addRow("马赛克增强概率 (mosaic):", self.mosaic_spin)
+        other_layout.addRow(tr("mosaic_probability"), self.mosaic_spin)
         
         self.copy_paste_spin = QDoubleSpinBox()
         self.copy_paste_spin.setRange(0.0, 1.0)
         self.copy_paste_spin.setSingleStep(0.1)
         self.copy_paste_spin.setValue(0.0)
-        other_layout.addRow("复制粘贴增强概率 (copy_paste):", self.copy_paste_spin)
+        other_layout.addRow(tr("copy_paste_probability"), self.copy_paste_spin)
         
         layout.addWidget(other_advanced_group)
         
@@ -517,7 +518,7 @@ class TrainDialog(QDialog):
         """浏览模型文件"""
         current_dir = Path.cwd()
         model_path, _ = QFileDialog.getOpenFileName(
-            self, "选择预训练模型文件",
+            self, tr("browse_model_file_dialog"),
             str(current_dir),
             "PyTorch模型文件 (*.pt)"
         )
@@ -529,7 +530,7 @@ class TrainDialog(QDialog):
         """浏览数据集配置文件"""
         current_dir = Path.cwd()
         yaml_path, _ = QFileDialog.getOpenFileName(
-            self, "选择数据集配置文件",
+            self, tr("browse_data_yaml_dialog"),
             str(current_dir),
             "YAML文件 (*.yaml *.yml)"
         )
@@ -541,7 +542,7 @@ class TrainDialog(QDialog):
         """浏览输出目录"""
         current_dir = Path.cwd()
         output_dir = QFileDialog.getExistingDirectory(
-            self, "选择训练结果输出目录",
+            self, tr("browse_output_dir_dialog"),
             str(current_dir)
         )
         
@@ -552,7 +553,7 @@ class TrainDialog(QDialog):
         """浏览检查点文件"""
         current_dir = Path.cwd()
         resume_path, _ = QFileDialog.getOpenFileName(
-            self, "选择检查点文件",
+            self, tr("browse_resume_file_dialog"),
             str(current_dir),
             "PyTorch模型文件 (*.pt)"
         )
@@ -564,7 +565,7 @@ class TrainDialog(QDialog):
         """保存训练配置到文件"""
         current_dir = Path.cwd()
         config_path, _ = QFileDialog.getSaveFileName(
-            self, "保存训练配置",
+            self, tr("save_config_dialog_title"),
             str(current_dir),
             "JSON文件 (*.json)"
         )
@@ -582,15 +583,15 @@ class TrainDialog(QDialog):
                 with open(config_path, 'w', encoding='utf-8') as f:
                     json.dump(config, f, indent=2, ensure_ascii=False)
                 
-                QMessageBox.information(self, "成功", f"配置已保存到: {config_path}")
+                QMessageBox.information(self, tr("success"), tr("config_saved_successfully") + f" {config_path}")
             except Exception as e:
-                QMessageBox.critical(self, "错误", f"保存配置失败: {str(e)}")
+                QMessageBox.critical(self, tr("error"), tr("save_config_failed_error") + f" {str(e)}")
     
     def load_config(self):
         """从文件加载训练配置"""
         current_dir = Path.cwd()
         config_path, _ = QFileDialog.getOpenFileName(
-            self, "加载训练配置",
+            self, tr("load_config_dialog_title"),
             str(current_dir),
             "JSON文件 (*.json)"
         )
@@ -605,9 +606,9 @@ class TrainDialog(QDialog):
                 self.config.update(config)
                 self.load_config_to_ui()
                 
-                QMessageBox.information(self, "成功", f"配置已加载: {config_path}")
+                QMessageBox.information(self, tr("success"), tr("config_loaded_successfully") + f" {config_path}")
             except Exception as e:
-                QMessageBox.critical(self, "错误", f"加载配置失败: {str(e)}")
+                QMessageBox.critical(self, tr("error"), tr("load_config_failed_error") + f" {str(e)}")
     
     def collect_config_from_ui(self) -> Dict[str, Any]:
         """从UI收集配置"""
@@ -776,30 +777,30 @@ class TrainDialog(QDialog):
         
         # 检查必要参数
         if not config['model_path']:
-            QMessageBox.warning(self, "警告", "请选择预训练模型文件")
+            QMessageBox.warning(self, tr("warning"), tr("validation_failed_model_file"))
             self.model_path_edit.setFocus()
             return False
         
         if not config['data_yaml']:
-            QMessageBox.warning(self, "警告", "请选择数据集配置文件")
+            QMessageBox.warning(self, tr("warning"), tr("validation_failed_data_yaml"))
             self.data_yaml_edit.setFocus()
             return False
         
         # 检查文件是否存在
         if not Path(config['model_path']).exists():
-            QMessageBox.warning(self, "警告", f"模型文件不存在: {config['model_path']}")
+            QMessageBox.warning(self, tr("warning"), tr("model_file_not_exists") + f" {config['model_path']}")
             self.model_path_edit.setFocus()
             return False
         
         if not Path(config['data_yaml']).exists():
-            QMessageBox.warning(self, "警告", f"数据集配置文件不存在: {config['data_yaml']}")
+            QMessageBox.warning(self, tr("warning"), tr("data_yaml_not_exists") + f" {config['data_yaml']}")
             self.data_yaml_edit.setFocus()
             return False
         
         # 如果启用了恢复训练，检查检查点文件
         if config['resume'] and isinstance(config['resume'], str):
             if not Path(config['resume']).exists():
-                QMessageBox.warning(self, "警告", f"检查点文件不存在: {config['resume']}")
+                QMessageBox.warning(self, tr("warning"), tr("checkpoint_file_not_exists") + f" {config['resume']}")
                 self.resume_path_edit.setFocus()
                 return False
         
@@ -837,7 +838,8 @@ class TrainDialog(QDialog):
                             self.log_message(f"已从文件加载上次配置: {config_path}")
         except Exception as e:
             # 加载失败时不中断程序
-            print(f"加载上次配置失败: {e}")
+            from src.utils.i18n import tr
+            print(tr("load_last_config_failed").replace("{error}", str(e)))
     
     def save_last_config(self):
         """保存当前配置到配置文件"""
@@ -859,10 +861,10 @@ class TrainDialog(QDialog):
             with open(self.config_file_path, 'w', encoding='utf-8') as f:
                 self.config_parser.write(f)
             
-            self.log_message("配置已自动保存")
+            self.log_message(tr("config_auto_saved"))
         except Exception as e:
             # 保存失败时不中断程序
-            print(f"自动保存配置失败: {e}")
+            print(tr("config_auto_save_failed").replace("{error}", str(e)))
     
     def connect_config_change_signals(self):
         """连接所有控件的修改信号，以便在配置发生变化时自动保存"""
@@ -979,8 +981,8 @@ class TrainDialog(QDialog):
         """重置所有参数到市场最优默认值"""
         reply = QMessageBox.question(
             self,
-            "重置默认参数",
-            "确定要重置所有参数到市场最优默认值吗？\n当前的自定义配置将被覆盖。",
+            tr("reset_default_params"),
+            tr("reset_params_confirmation"),
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
@@ -1008,8 +1010,8 @@ class TrainDialog(QDialog):
             
             QMessageBox.information(
                 self,
-                "重置成功",
-                "所有参数已重置到市场最优默认值\n（文件路径信息已保留）"
+                tr("success"),
+                tr("reset_params_complete")
             )
     
     def start_training(self):
@@ -1025,7 +1027,7 @@ class TrainDialog(QDialog):
         
         # 设置训练器
         if not self.trainer.setup(config):
-            QMessageBox.critical(self, "错误", "训练参数设置失败")
+            QMessageBox.critical(self, tr("error"), tr("train_params_setup_failed"))
             return
         
         # 创建训练进度对话框
@@ -1036,9 +1038,9 @@ class TrainDialog(QDialog):
         def on_training_finished(success: bool, message: str):
             self.btn_start.setEnabled(True)
             if success:
-                QMessageBox.information(self, "训练完成", message)
+                QMessageBox.information(self, tr("training_completed"), message)
             else:
-                QMessageBox.critical(self, "训练失败", message)
+                QMessageBox.critical(self, tr("training_failed"), message)
         
         self.trainer.training_finished.connect(on_training_finished)
         

@@ -71,6 +71,11 @@ def main():
         app.setOrganizationName("YoloLabelTool")
         app.setApplicationVersion("1.0.0")
         
+        # 初始化翻译管理器
+        from src.utils.i18n import TranslationManager
+        translation_manager = TranslationManager.instance()
+        logger.info(f"翻译管理器初始化完成，当前语言: {translation_manager.get_current_language()}")
+        
         # 创建并显示主窗口
         window = MainWindow()
         window.show()

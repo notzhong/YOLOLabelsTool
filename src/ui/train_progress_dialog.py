@@ -13,6 +13,7 @@ from PySide6.QtCore import Qt, Signal, Slot, QTimer
 from PySide6.QtGui import QFont, QTextCursor
 
 from yolo_tool import YOLOTrainer
+from src.utils.i18n import tr
 
 
 class TrainProgressDialog(QDialog):
@@ -27,7 +28,7 @@ class TrainProgressDialog(QDialog):
         self.init_ui()
         
         # 设置窗口属性
-        self.setWindowTitle("YOLO模型训练进度")
+        self.setWindowTitle(tr("training_progress"))
         self.setModal(True)
         self.resize(800, 600)
         
@@ -43,11 +44,11 @@ class TrainProgressDialog(QDialog):
         main_layout = QVBoxLayout(self)
         
         # 训练信息
-        info_group = QGroupBox("训练信息")
+        info_group = QGroupBox(tr("training_info"))
         info_layout = QVBoxLayout(info_group)
         
         # 状态标签
-        self.status_label = QLabel("准备开始训练...")
+        self.status_label = QLabel(tr("ready_to_start_training_status"))
         self.status_label.setStyleSheet("font-weight: bold; font-size: 14px;")
         info_layout.addWidget(self.status_label)
         
@@ -61,15 +62,15 @@ class TrainProgressDialog(QDialog):
         details_layout = QHBoxLayout()
         
         # 已用时间
-        self.time_label = QLabel("已用时间: 00:00:00")
+        self.time_label = QLabel(tr("elapsed_time_label"))
         details_layout.addWidget(self.time_label)
         
         # 当前epoch
-        self.epoch_label = QLabel("当前epoch: 0/0")
+        self.epoch_label = QLabel(tr("current_epoch_label"))
         details_layout.addWidget(self.epoch_label)
         
         # 损失值
-        self.loss_label = QLabel("损失: -")
+        self.loss_label = QLabel(tr("loss_value_label"))
         details_layout.addWidget(self.loss_label)
         
         details_layout.addStretch()
@@ -78,7 +79,7 @@ class TrainProgressDialog(QDialog):
         main_layout.addWidget(info_group)
         
         # 日志输出
-        log_group = QGroupBox("训练日志")
+        log_group = QGroupBox(tr("training_log_title"))
         log_layout = QVBoxLayout(log_group)
         
         self.log_text = QTextEdit()
@@ -95,21 +96,21 @@ class TrainProgressDialog(QDialog):
         button_layout.addStretch()
         
         # 重新配置按钮（训练失败时显示）
-        self.btn_reconfigure = QPushButton("重新配置")
+        self.btn_reconfigure = QPushButton(tr("reconfigure_training_btn"))
         self.btn_reconfigure.clicked.connect(self.reconfigure_training)
         self.btn_reconfigure.setStyleSheet("background-color: #2196F3; color: white; font-weight: bold;")
         self.btn_reconfigure.setVisible(False)
         button_layout.addWidget(self.btn_reconfigure)
         
         # 停止训练按钮
-        self.btn_stop = QPushButton("停止训练")
+        self.btn_stop = QPushButton(tr("stop_training_btn_label"))
         self.btn_stop.clicked.connect(self.stop_training)
         self.btn_stop.setStyleSheet("background-color: #f44336; color: white; font-weight: bold;")
         self.btn_stop.setEnabled(False)
         button_layout.addWidget(self.btn_stop)
         
         # 关闭按钮（默认隐藏）
-        self.btn_close = QPushButton("关闭")
+        self.btn_close = QPushButton(tr("close_dialog_btn"))
         self.btn_close.clicked.connect(self.accept)
         self.btn_close.setVisible(False)
         button_layout.addWidget(self.btn_close)
@@ -126,14 +127,14 @@ class TrainProgressDialog(QDialog):
             self.show()
             return True
         else:
-            QMessageBox.critical(self, "错误", "无法开始训练")
+            QMessageBox.critical(self, tr("error"), tr("unable_to_start_training"))
             return False
     
     @Slot()
     def on_training_started(self):
         """训练开始事件"""
         self.start_time = datetime.now()
-        self.status_label.setText("训练进行中...")
+        self.status_label.setText(tr("training_in_progress_status"))
         self.status_label.setStyleSheet("font-weight: bold; font-size: 14px; color: #4CAF50;")
         
         self.btn_stop.setEnabled(True)
@@ -142,7 +143,7 @@ class TrainProgressDialog(QDialog):
         # 启动计时器
         self.timer.start(1000)  # 每秒更新一次
         
-        self.log_message("训练开始")
+        self.log_message(tr("training_started"))
     
     @Slot(int, dict)
     def on_progress_updated(self, epoch: int, metrics: dict):
@@ -153,12 +154,14 @@ class TrainProgressDialog(QDialog):
         self.progress_bar.setValue(progress)
         
         # 更新标签
-        self.epoch_label.setText(f"当前epoch: {epoch}/{total_epochs}")
+        self.epoch_label.setText(tr("training_progress_current_epoch_format").format(epoch, total_epochs))
         
         # 更新损失值
         if metrics:
             loss = metrics.get('loss', 'N/A')
-            self.loss_label.setText(f"损失: {loss}")
+            self.loss_label.setText(tr("training_progress_loss_format").format(loss))
+        else:
+            self.loss_label.setText(tr("training_progress_loss_default"))
     
     @Slot(str)
     def on_log_message(self, message: str):
@@ -173,11 +176,11 @@ class TrainProgressDialog(QDialog):
         
         # 更新状态
         if success:
-            self.status_label.setText("训练完成")
+            self.status_label.setText(tr("training_completed_status"))
             self.status_label.setStyleSheet("font-weight: bold; font-size: 14px; color: #4CAF50;")
             self.progress_bar.setValue(100)
         else:
-            self.status_label.setText("训练失败")
+            self.status_label.setText(tr("training_failed_status_label"))
             self.status_label.setStyleSheet("font-weight: bold; font-size: 14px; color: #f44336;")
         
         # 更新按钮状态
@@ -190,18 +193,18 @@ class TrainProgressDialog(QDialog):
         
         # 记录完成消息
         self.log_message(message)
-        self.log_message("训练结束")
+        self.log_message(tr("training_ended"))
     
     @Slot()
     def on_training_stopped(self):
         """训练停止事件"""
-        self.status_label.setText("训练已停止")
+        self.status_label.setText(tr("training_stopped_status"))
         self.status_label.setStyleSheet("font-weight: bold; font-size: 14px; color: #ff9800;")
         
         self.btn_stop.setEnabled(False)
         self.btn_close.setVisible(True)
         
-        self.log_message("训练已停止")
+        self.log_message(tr("training_stopped_message"))
     
     def reconfigure_training(self):
         """重新配置训练"""
@@ -221,27 +224,27 @@ class TrainProgressDialog(QDialog):
                     self.trainer.model = None
             
             # 重置UI状态
-            self.status_label.setText("准备重新配置...")
+            self.status_label.setText(tr("ready_to_reconfigure"))
             self.status_label.setStyleSheet("font-weight: bold; font-size: 14px;")
             self.progress_bar.setValue(0)
-            self.epoch_label.setText("当前epoch: 0/0")
-            self.loss_label.setText("损失: -")
-            self.time_label.setText("已用时间: 00:00:00")
+            self.epoch_label.setText(tr("training_progress_epoch_default"))
+            self.loss_label.setText(tr("training_progress_loss_default"))
+            self.time_label.setText(tr("training_progress_time_default"))
             
             # 停止计时器
             if self.timer.isActive():
                 self.timer.stop()
             
             # 记录操作
-            self.log_message("正在重新配置训练...")
+            self.log_message(tr("reconfiguring_training"))
             
             # 关闭当前对话框并返回拒绝结果
             # 父窗口可以检测到拒绝结果并重新打开配置对话框
             self.done(QDialog.Rejected)
             
         except Exception as e:
-            self.log_message(f"重新配置失败: {str(e)}")
-            QMessageBox.critical(self, "错误", f"重新配置失败: {str(e)}")
+            self.log_message(tr("reconfigure_failed_prefix") + str(e))
+            QMessageBox.critical(self, tr("error"), tr("reconfigure_failed_prefix") + str(e))
             
             # 恢复按钮状态
             self.btn_reconfigure.setVisible(True)
@@ -250,8 +253,8 @@ class TrainProgressDialog(QDialog):
     def stop_training(self):
         """停止训练"""
         reply = QMessageBox.question(
-            self, "确认停止",
-            "确定要停止训练吗？",
+            self, tr("stop_training_confirm_title"),
+            tr("stop_training_confirm_msg"),
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
@@ -259,7 +262,7 @@ class TrainProgressDialog(QDialog):
         if reply == QMessageBox.Yes:
             self.trainer.stop_training()
             self.btn_stop.setEnabled(False)
-            self.log_message("正在停止训练...")
+            self.log_message(tr("stopping_training"))
     
     def log_message(self, message: str):
         """添加日志消息"""
@@ -287,16 +290,15 @@ class TrainProgressDialog(QDialog):
             hours, remainder = divmod(elapsed.total_seconds(), 3600)
             minutes, seconds = divmod(remainder, 60)
             
-            time_str = f"已用时间: {int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}"
+            time_str = tr("training_progress_elapsed_time_format").format(int(hours), int(minutes), int(seconds))
             self.time_label.setText(time_str)
     
     def closeEvent(self, event):
         """关闭事件"""
         if self.trainer.is_training:
             reply = QMessageBox.question(
-                self, "确认关闭",
-                "训练仍在进行中，关闭窗口不会停止训练。\n"
-                "确定要关闭进度窗口吗？",
+                self, tr("close_dialog_confirm_title"),
+                tr("close_dialog_confirm_msg"),
                 QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.No
             )

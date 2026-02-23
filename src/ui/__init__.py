@@ -1,7 +1,7 @@
 """
-YOLO Label Tool 用户界面模块
+YOLO Label Tool UI Module
 
-包含主窗口、对话框等用户界面组件。
+Contains main window, dialogs, and other user interface components.
 """
 
 __all__ = [
