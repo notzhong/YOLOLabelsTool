@@ -28,7 +28,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import (
     QPixmap, QImage, QPainter, QPen, QBrush, QColor,
     QAction, QKeySequence, QFont, QIcon, QCursor,
-    QMouseEvent, QWheelEvent, QKeyEvent, QResizeEvent
+    QMouseEvent, QWheelEvent, QKeyEvent, QResizeEvent,
 )
 
 from src.core.annotation import Annotation, AnnotationManager
@@ -419,6 +419,8 @@ class MainWindow(QMainWindow):
         
         # 加载QSS样式
         self.load_qss_style()
+
+        self.setWindowIcon(QPixmap('icon.ico'))
     
     def load_qss_style(self):
         """加载QSS样式文件"""

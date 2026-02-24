@@ -28,7 +28,19 @@ MANIFEST
 
 # PyInstaller
 *.manifest
-*.spec
+__pycache__/PyInstaller/
+*.pkg  # macOS package files
+*.dmg  # macOS disk images
+*.app/  # macOS applications
+*.exe  # Windows executables (如果不想排除，可以注释掉)
+*.msi  # Windows installer packages
+*.msm  # Windows merge modules
+*.msp  # Windows installer patches
+
+# 项目打包输出
+dist-yolo-tool/  # 自定义打包输出目录
+YOLOLabelTool*.exe  # 打包生成的exe文件
+YOLOLabelTool*.zip  # 打包压缩文件
 
 # Installer logs
 pip-log.txt

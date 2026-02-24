@@ -183,3 +183,29 @@ QLabel[style*="font-weight: bold"] {
 QLabel[style*="color: #aaaaaa"] {
     color: #777777;
 }
+
+/* Light Mode */
+QTableWidget {
+    background-color: #FFFFFF;
+    alternate-background-color: #F5F5F5;
+    gridline-color: #E0E0E0;
+    font-family: "Microsoft YaHei";
+    font-size: 12px;
+}
+ 
+QTableWidget::item {
+    color: #333333;
+    border-bottom: 1px solid #E0E0E0;
+}
+ 
+QTableWidget::item:selected {
+    background-color: #2196F3;
+    color: white;
+}
+ 
+QHeaderView::section {
+    background-color: #F0F0F0;
+    color: #555555;
+    padding: 4px;
+    border: 1px solid #E0E0E0;
+}
