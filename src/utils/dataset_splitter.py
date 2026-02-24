@@ -223,15 +223,79 @@ class DatasetSplitter:
                 dest_image = images_dir / image_name
                 shutil.copy2(image_path, dest_image)
                 
-                # 复制标注（如果存在）
-                annotation_path = annotation_manager.get_annotation_path(image_path)
-                if Path(annotation_path).exists():
-                    annotation_name = Path(image_path).stem + ".txt"
-                    dest_annotation = labels_dir / annotation_name
-                    shutil.copy2(annotation_path, dest_annotation)
+                # 转换并导出标注（如果存在）
+                annotation_name = Path(image_path).stem + ".txt"
+                dest_annotation = labels_dir / annotation_name
+                self._export_yolo_labels(
+                    image_path, dest_annotation, image_manager, annotation_manager
+                )
                     
             except Exception as e:
                 self.logger.error(f"复制数据失败 {image_path}: {e}")
+    
+    def _export_yolo_labels(
+        self,
+        image_path: str,
+        output_file: Path,
+        image_manager,
+        annotation_manager
+    ):
+        """导出YOLO格式标注文件"""
+        # 获取标注
+        annotations = annotation_manager.get_annotations(image_path)
+        if not annotations:
+            # 没有标注，创建空文件或跳过
+            try:
+                output_file.touch()
+            except:
+                pass
+            return
+        
+        # 获取图片尺寸
+        image_info = image_manager.get_image_info(image_path)
+        if image_info is None:
+            try:
+                # 尝试使用PIL获取图片尺寸
+                from PIL import Image
+                with Image.open(image_path) as img:
+                    image_width, image_height = img.size
+            except Exception as e:
+                self.logger.error(f"获取图片尺寸失败 {image_path}: {e}")
+                return
+        else:
+            image_width, image_height = image_info
+        
+        # 写入YOLO格式
+        try:
+            with open(output_file, 'w', encoding='utf-8') as f:
+                for ann in annotations:
+                    # 转换为YOLO格式
+                    if hasattr(ann, 'to_yolo_format'):
+                        yolo_data = ann.to_yolo_format(image_width, image_height)
+                    else:
+                        # 如果是字典格式
+                        x = ann.get('x', 0)
+                        y = ann.get('y', 0)
+                        width = ann.get('width', 0)
+                        height = ann.get('height', 0)
+                        class_id = ann.get('class_id', 0)
+                        
+                        # 计算YOLO格式
+                        x_center = (x + width / 2) / image_width
+                        y_center = (y + height / 2) / image_height
+                        norm_width = width / image_width
+                        norm_height = height / image_height
+                        
+                        yolo_data = [class_id, x_center, y_center, norm_width, norm_height]
+                    
+                    # 写入文件 - class_id为整数，坐标值为浮点数
+                    if len(yolo_data) >= 5:
+                        line = f"{int(yolo_data[0])} {yolo_data[1]:.6f} {yolo_data[2]:.6f} {yolo_data[3]:.6f} {yolo_data[4]:.6f}"
+                    else:
+                        line = " ".join(f"{val:.6f}" for val in yolo_data)
+                    f.write(line + "\n")
+        except Exception as e:
+            self.logger.error(f"写入YOLO标注文件失败 {output_file}: {e}")
     
     def create_cross_validation_splits(
         self,

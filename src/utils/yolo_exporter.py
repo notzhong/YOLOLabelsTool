@@ -191,8 +191,11 @@ class YOLOExporter:
                     
                     yolo_data = [class_id, x_center, y_center, norm_width, norm_height]
                 
-                # 写入文件
-                line = " ".join(f"{val:.6f}" for val in yolo_data)
+                # 写入文件 - class_id为整数，坐标值为浮点数
+                if len(yolo_data) >= 5:
+                    line = f"{int(yolo_data[0])} {yolo_data[1]:.6f} {yolo_data[2]:.6f} {yolo_data[3]:.6f} {yolo_data[4]:.6f}"
+                else:
+                    line = " ".join(f"{val:.6f}" for val in yolo_data)
                 f.write(line + "\n")
     
     def _copy_image(self, image_path: str, output_images_dir: Path):
@@ -312,7 +315,11 @@ class YOLOExporter:
                     
                     yolo_data = [class_id, x_center, y_center, norm_width, norm_height]
                 
-                line = " ".join(f"{val:.6f}" for val in yolo_data)
+                # 写入文件 - class_id为整数，坐标值为浮点数
+                if len(yolo_data) >= 5:
+                    line = f"{int(yolo_data[0])} {yolo_data[1]:.6f} {yolo_data[2]:.6f} {yolo_data[3]:.6f} {yolo_data[4]:.6f}"
+                else:
+                    line = " ".join(f"{val:.6f}" for val in yolo_data)
                 f.write(line + "\n")
         
         # 复制图片
@@ -328,9 +335,9 @@ class YOLOExporter:
         
         config_data = {
             "path": str(output_path.absolute()),
-            "train": ".",
-            "val": ".",
-            "test": ".",
+            "train": ".",  
+            "val": ".",  
+            "test": ".",  
             "nc": class_manager.get_class_count(),
             "names": names_dict  # 使用字典格式
         }
