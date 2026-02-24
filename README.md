@@ -45,7 +45,9 @@
 
 1. **克隆仓库**
 ```bash
-git clone <repository-url>
+GitHub：git clone https://github.com/notzhong/YOLOLabelsTool.git
+or
+Gitee：git clone https://gitee.com/notzhong/YOLOLabelsTool.git
 cd YoloLabelTool
 ```
 
@@ -153,7 +155,8 @@ names: []  # 类别名称列表（用户自定义）
 - **YOLOv8** (.pt格式) - 最新主流版本，支持目标检测、实例分割、姿态估计等
 - **YOLOv9** (.pt格式) - 2024年发布的先进版本
 - **YOLOv10** (.pt格式) - 2024年发布的高效版本
-- **YOLOv11** (.pt格式) - 2024年最新版本
+- **YOLOv11** (.pt格式) - 2024年版本
+- **YOLOv26** (.pt格式) - 2025年版本
 
 > **注意**：`ultralytics` 库会自动适配不同版本的 YOLO 模型，只要模型文件是 `.pt` 格式且使用标准的 Ultralytics 架构，工具就能正确加载和使用。
 
