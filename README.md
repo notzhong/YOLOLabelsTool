@@ -7,7 +7,7 @@
 ### 🎯 核心功能
 - **图片管理**：加载文件夹、图片预览、切换图片
 - **标注绘制**：手动绘制矩形标注框、编辑标注框、删除标注
-- **类别管理**：添加/编辑/删除标注类别、自定义类别颜色
+- **类别管理**：添加/编辑/删除标注类别、清空所有类别、自定义类别颜色
 - **数据导出**：导出YOLO格式数据集（data.yaml + labels文件夹）
 
 ### 🚀 高级功能
@@ -60,6 +60,48 @@ pip install -r requirements.txt
 ```bash
 python main.py
 ```
+
+## 打包发布
+
+### 打包为独立可执行文件
+YOLO Label Tool 支持使用 PyInstaller 打包为独立的可执行文件，方便在没有 Python 环境的 Windows 系统上运行。
+
+#### 打包步骤
+1. **安装打包依赖**
+```bash
+pip install -r requirements-build.txt
+```
+
+2. **下载并安装 UPX**（可选，但推荐用于压缩）
+   - 从 https://upx.github.io/ 下载 UPX
+   - 解压并将 upx.exe 添加到系统 PATH
+
+3. **执行打包命令**
+```bash
+pyinstaller YoloLabelsTrainTool.spec
+```
+
+#### 打包选项说明
+- **spec 文件**：`YoloLabelsTrainTool.spec` 包含了完整的打包配置
+- **打包内容**：
+  - 主程序可执行文件
+  - 翻译文件（中英文）
+  - 主题样式文件（黑夜/白天）
+  - 图标文件
+  - 配置文件和目录
+- **输出目录**：打包完成后，可执行文件位于 `dist/YoloLabelsTrainTool/` 目录
+
+#### 打包注意事项
+1. **文件大小**：打包后的可执行文件较大（约 300MB-500MB），因为包含了 Python 运行时、PySide6、OpenCV、ultralytics 等依赖
+2. **第一次启动**：第一次启动可能较慢，系统需要进行解压和加载
+3. **模型文件**：用户自己的 YOLO 模型文件需要放在程序运行目录的 `model/` 文件夹中
+4. **CUDA 支持**：如果使用 GPU 加速，需要确保目标系统有合适的 NVIDIA 驱动和 CUDA 库
+
+### 使用 Inno Setup 创建安装程序（可选）
+对于更专业的分发，可以使用 Inno Setup 创建 Windows 安装程序：
+1. 下载 Inno Setup：https://jrsoftware.org/isinfo.php
+2. 创建安装脚本（.iss 文件）
+3. 编译安装脚本生成 setup.exe
 
 ## 快速开始
 
@@ -242,7 +284,9 @@ YoloLabelTool/
 ├── pyproject.toml          # 项目配置和依赖
 ├── requirements.txt        # 依赖包列表
 ├── requirements-dev.txt    # 开发依赖
+├── requirements-build.txt  # 打包构建依赖
 ├── README.md              # 项目说明
+├── YoloLabelsTrainTool.spec # PyInstaller打包配置文件
 ├── src/
 │   ├── core/              # 核心模块
 │   │   ├── annotation.py  # 标注数据结构和管理器
@@ -389,6 +433,16 @@ A: 通过菜单"语言 → 中文/英文"切换界面语言，切换会立即生
 - 发送邮件到 developer@example.com
 
 ## 更新日志
+
+### v1.3.0 (2026-02-24)
+- **新增 PyInstaller 打包支持**：支持将项目打包为独立可执行文件，方便在没有 Python 环境的 Windows 系统上运行
+- **新增打包配置文件**：
+  - 添加 `YoloLabelsTrainTool.spec` - PyInstaller 打包配置文件
+  - 添加 `requirements-build.txt` - 打包构建依赖说明
+- **新增 QTableWidget 主题样式**：为表格控件添加完整的黑夜/白天主题支持，提升用户体验
+- **图标调整**：优化应用图标显示效果
+- **更新项目结构**：完善文档中的项目结构说明，增加打包相关文件
+- **打包文档完善**：添加完整的打包发布章节，包含打包步骤、注意事项和可选安装程序制作指南
 
 ### v1.2.0 (2026-02-24)
 - **新增模型训练功能**：完整的YOLO模型训练支持，包含训练配置对话框和进度监控
