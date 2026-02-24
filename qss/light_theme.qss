@@ -209,3 +209,80 @@ QHeaderView::section {
     padding: 4px;
     border: 1px solid #E0E0E0;
 }
+
+/* 白天主题 QMessageBox 样式 */
+QMessageBox {
+    background-color: #f5f5f5;
+    border: 1px solid #d0d0d0;
+    border-radius: 8px;
+    font-family: "Microsoft YaHei", "微软雅黑", sans-serif;
+    min-width: 350px;
+    min-height: 150px;
+}
+
+/* 标题栏区域 */
+QMessageBox QLabel#qt_msgbox_label {
+    color: #333333;
+    font-size: 14px;
+    font-weight: bold;
+    padding: 10px 15px;
+    background-color: #e8e8e8;
+    border-top-left-radius: 7px;
+    border-top-right-radius: 7px;
+    min-height: 30px;
+}
+
+/* 消息内容区域 */
+QMessageBox QLabel#qt_msgbox_informativelabel {
+    color: #444444;
+    font-size: 12px;
+    padding: 15px 20px;
+    background-color: #f5f5f5;
+    border: none;
+}
+
+/* 图标区域（可选，如果你使用标准图标） */
+QMessageBox QLabel#qt_msgboxex_icon_label {
+    padding: 10px;
+}
+
+/* 按钮区域 */
+QMessageBox QPushButton {
+    background-color: #e0e0e0;
+    border: 1px solid #b0b0b0;
+    border-radius: 4px;
+    color: #333333;
+    font-size: 12px;
+    font-weight: normal;
+    min-width: 80px;
+    min-height: 28px;
+    padding: 4px 12px;
+    margin: 5px;
+}
+
+QMessageBox QPushButton:hover {
+    background-color: #d0d0d0;
+    border: 1px solid #909090;
+}
+
+QMessageBox QPushButton:pressed {
+    background-color: #c0c0c0;
+    border: 1px solid #707070;
+}
+
+QMessageBox QPushButton:default {
+    background-color: #0078d4;
+    border: 1px solid #005a9e;
+    color: white;
+    font-weight: bold;
+}
+
+QMessageBox QPushButton:default:hover {
+    background-color: #1e88e5;
+    border: 1px solid #0d47a1;
+}
+
+QMessageBox QPushButton:default:pressed {
+    background-color: #005a9e;
+    border: 1px solid #003f6f;
+}
