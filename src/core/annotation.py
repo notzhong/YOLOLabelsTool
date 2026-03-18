@@ -192,10 +192,15 @@ class AnnotationManager:
     
     def save_annotations(self, image_path: str, annotations: List[Annotation]):
         """保存标注到文件"""
-        if not annotations:
-            return
-        
         annotation_path = self.get_annotation_path(image_path)
+
+        if not annotations:
+            # 空标注时删除对应文件，避免残留旧标注
+            if os.path.exists(annotation_path):
+                os.remove(annotation_path)
+            # 同步更新内存缓存
+            self._annotations[image_path] = []
+            return
         
         # 转换为可序列化的字典列表
         annotations_data = [ann.to_dict() for ann in annotations]

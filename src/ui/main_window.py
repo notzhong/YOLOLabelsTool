@@ -48,6 +48,7 @@ class AnnotationRectItem(QGraphicsRectItem):
         super().__init__(x, y, width, height, parent)
         self.annotation = annotation
         self.color = color
+        self.logger = get_logger_simple(__name__)
         
         # 拖拽状态
         self.is_selected = False
@@ -1322,7 +1323,7 @@ class MainWindow(QMainWindow):
         self.class_list_widget.clear()
         
         classes = self.class_manager.get_classes()
-        for class_id, class_info in classes.items():
+        for class_id, class_info in sorted(classes.items()):
             class_name = class_info["name"]
             color = class_info["color"]
             
@@ -1331,6 +1332,7 @@ class MainWindow(QMainWindow):
             
             # 设置背景颜色
             item = self.class_list_widget.item(self.class_list_widget.count() - 1)
+            item.setData(Qt.UserRole, class_id)
             item.setBackground(QColor(*color))
             
             # 设置文字颜色为对比色
@@ -1340,17 +1342,24 @@ class MainWindow(QMainWindow):
     
     def on_class_item_clicked(self, item):
         """类别列表项点击事件"""
-        # 从列表项文本中提取class_id
-        item_text = item.text()
-        if ": " in item_text:
-            try:
-                class_id_str = item_text.split(": ")[0]
-                self.selected_class_id = int(class_id_str)
-                self.update_status(tr("selected_class").replace("{class_name}", self.class_manager.get_class_name(self.selected_class_id)))
-            except ValueError:
-                self.update_status(tr("cannot_parse_class_id_error"))
-        else:
-            self.update_status(tr("invalid_class_format_error"))
+        # 优先从UserRole读取真实class_id，避免行号和class_id错位
+        class_id = item.data(Qt.UserRole)
+        if class_id is None:
+            # 兼容旧数据：从文本中回退解析
+            item_text = item.text()
+            if ": " in item_text:
+                try:
+                    class_id_str = item_text.split(": ")[0]
+                    class_id = int(class_id_str)
+                except ValueError:
+                    self.update_status(tr("cannot_parse_class_id_error"))
+                    return
+            else:
+                self.update_status(tr("invalid_class_format_error"))
+                return
+
+        self.selected_class_id = int(class_id)
+        self.update_status(tr("selected_class").replace("{class_name}", self.class_manager.get_class_name(self.selected_class_id)))
     
     def add_class(self):
         """添加类别"""
@@ -1369,8 +1378,14 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, tr("warning"), tr("select_class"))
             return
         
-        index = self.class_list_widget.row(selected_items[0])
-        class_info = self.class_manager.get_class(index)
+        selected_item = selected_items[0]
+        class_id = selected_item.data(Qt.UserRole)
+        if class_id is None:
+            QMessageBox.warning(self, tr("warning"), tr("cannot_parse_class_id_error"))
+            return
+
+        class_id = int(class_id)
+        class_info = self.class_manager.get_class(class_id)
         
         # 检查类别是否存在
         if not class_info:
@@ -1384,7 +1399,7 @@ class MainWindow(QMainWindow):
         
         if dialog.exec():
             class_name, color = dialog.get_values()
-            self.class_manager.update_class(index, class_name, color)
+            self.class_manager.update_class(class_id, class_name, color)
             self.update_class_list()
     
     def delete_class(self):
@@ -1394,10 +1409,16 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, tr("warning"), tr("select_class"))
             return
         
-        index = self.class_list_widget.row(selected_items[0])
+        selected_item = selected_items[0]
+        class_id = selected_item.data(Qt.UserRole)
+        if class_id is None:
+            QMessageBox.warning(self, tr("warning"), tr("cannot_parse_class_id_error"))
+            return
+
+        class_id = int(class_id)
         
         # 获取要删除的类别名称
-        class_info = self.class_manager.get_class(index)
+        class_info = self.class_manager.get_class(class_id)
         if not class_info:
             QMessageBox.warning(self, tr("warning"), tr("class_does_not_exist"))
             return
@@ -1413,7 +1434,7 @@ class MainWindow(QMainWindow):
         
         if reply == QMessageBox.Yes:
             # 如果删除的是当前选中的类别，重置选中状态
-            if index == self.selected_class_id:
+            if class_id == self.selected_class_id:
                 self.selected_class_id = 0
                 if self.class_manager.get_class_count() > 0:
                     # 选择第一个可用的类别
@@ -1422,7 +1443,7 @@ class MainWindow(QMainWindow):
                         self.selected_class_id = available_classes[0]
             
             # 删除类别
-            self.class_manager.delete_class(index)
+            self.class_manager.delete_class(class_id)
             self.update_class_list()
             
             # 更新状态
@@ -1664,24 +1685,6 @@ class MainWindow(QMainWindow):
                 QMessageBox.critical(self, tr("error"), f"{tr('export_failed')} {str(e)}")
     
     # ==================== 模型辅助标注 ====================
-    
-    def auto_annotate_current(self):
-        """自动标注当前图片"""
-        if not self.current_image_path:
-            QMessageBox.warning(self, tr("warning"), tr("no_image_loaded"))
-            return
-        
-        QMessageBox.information(self, tr("info"), tr("model_help_needed"))
-        # TODO: 实现模型加载和推理
-    
-    def batch_auto_annotate(self):
-        """批量自动标注"""
-        if self.image_manager.get_image_count() == 0:
-            QMessageBox.warning(self, tr("warning"), tr("no_image_loaded"))
-            return
-        
-        QMessageBox.information(self, tr("info"), tr("batch_model_help_needed"))
-        # TODO: 实现批量推理
     
     # ==================== 撤销/重做方法 ====================
     

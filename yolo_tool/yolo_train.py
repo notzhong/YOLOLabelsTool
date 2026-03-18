@@ -11,6 +11,7 @@ from typing import Dict, Any, Optional, Union
 import traceback
 
 from ultralytics import YOLO
+from ultralytics.cfg import DEFAULT_CFG_DICT
 
 from PySide6.QtCore import QObject, Signal
 
@@ -166,6 +167,9 @@ class YOLOTrainer(QObject):
             
             self.log_message.emit(f"加载模型: {model_path}")
             self.model = YOLO(model_path)
+
+            # 清理模型中可能携带的旧版/非兼容参数（例如某些自定义checkpoint参数）
+            self._sanitize_model_overrides()
             
             # 添加进度回调 - 使用健壮的注册方式
             progress_callback = ProgressCallback(self)
@@ -226,6 +230,9 @@ class YOLOTrainer(QObject):
             
             # 移除None值
             train_args = {k: v for k, v in train_args.items() if v is not None}
+
+            # 仅保留当前ultralytics版本支持的参数，避免版本差异导致训练失败
+            train_args = self._filter_supported_train_args(train_args)
             
             self.log_message.emit(f"开始训练，共 {train_args['epochs']} 个epochs")
             self.log_message.emit(f"输出目录: {train_args['project']}")
@@ -267,6 +274,50 @@ class YOLOTrainer(QObject):
             self._cleanup_resources()
             
             self.training_finished.emit(False, error_msg)
+
+    def _sanitize_model_overrides(self):
+        """清理模型内置overrides中的不兼容参数，避免影响train参数校验。"""
+        try:
+            if not self.model or not hasattr(self.model, 'overrides'):
+                return
+
+            overrides = getattr(self.model, 'overrides', None)
+            if not isinstance(overrides, dict):
+                return
+
+            valid_keys = set(DEFAULT_CFG_DICT.keys())
+            removed_keys = [k for k in list(overrides.keys()) if k not in valid_keys]
+            for k in removed_keys:
+                overrides.pop(k, None)
+
+            if removed_keys:
+                self.log_message.emit(
+                    f"已移除模型内不兼容参数: {', '.join(sorted(removed_keys))}"
+                )
+        except Exception as e:
+            self.log_message.emit(f"清理模型overrides失败（忽略）: {e}")
+
+    def _filter_supported_train_args(self, train_args: Dict[str, Any]) -> Dict[str, Any]:
+        """过滤并返回当前ultralytics版本支持的训练参数。"""
+        valid_keys = set(DEFAULT_CFG_DICT.keys())
+        # 常用运行参数一般也在DEFAULT_CFG_DICT中，这里为稳妥保留一组关键键
+        valid_keys.update({'data', 'project', 'name', 'exist_ok', 'resume'})
+
+        filtered_args = {}
+        removed_keys = []
+
+        for key, value in train_args.items():
+            if key in valid_keys:
+                filtered_args[key] = value
+            else:
+                removed_keys.append(key)
+
+        if removed_keys:
+            self.log_message.emit(
+                f"检测到当前版本不支持的训练参数，已忽略: {', '.join(sorted(removed_keys))}"
+            )
+
+        return filtered_args
     
     def start_training(self):
         """开始训练（异步）"""
