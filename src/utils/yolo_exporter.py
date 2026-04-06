@@ -33,7 +33,8 @@ class YOLOExporter:
         class_manager: ClassManager,
         output_dir: str,
         split_ratios: Tuple[float, float, float] = (0.7, 0.2, 0.1),
-        copy_images: bool = True
+        copy_images: bool = True,
+        yaml_filename: str = "data.yaml"
     ):
         """
         导出为YOLO格式
@@ -79,7 +80,7 @@ class YOLOExporter:
         self._export_split_files(output_dir, train_paths, val_paths, test_paths)
         
         # 导出data.yaml配置文件
-        self._export_yaml_config(class_manager, output_dir)
+        self._export_yaml_config(class_manager, output_dir, yaml_filename)
     
     def _create_output_structure(self, output_dir: str):
         """创建输出目录结构"""
@@ -222,81 +223,85 @@ class YOLOExporter:
         self._export_path_list(
             output_path / "train.txt",
             train_paths,
-            output_dir
+            "train"
         )
         
         # 导出验证集列表
         self._export_path_list(
             output_path / "val.txt",
             val_paths,
-            output_dir
+            "val"
         )
         
         # 导出测试集列表
         self._export_path_list(
             output_path / "test.txt",
             test_paths,
-            output_dir
+            "test"
         )
     
     def _export_path_list(
         self,
         output_file: Path,
         image_paths: List[str],
-        output_dir: str
+        subset: str
     ):
         """导出路径列表文件"""
         with open(output_file, 'w', encoding='utf-8') as f:
             for image_path in image_paths:
                 image_name = Path(image_path).name
-                
-                # 构建相对路径
-                rel_path = str(Path("images") / image_name)
+                rel_path = str(Path("images") / subset / image_name)
                 f.write(rel_path + "\n")
-    
-    def _export_yaml_config(self, class_manager: ClassManager, output_dir: str):
-        """导出data.yaml配置文件"""
+
+    def _build_names_config(self, class_manager: ClassManager):
+        """构建 names 字段：ID 连续用列表，否则用字典"""
+        class_ids = sorted(class_manager.get_classes().keys())
+        if class_ids and class_ids == list(range(max(class_ids) + 1)):
+            return [class_manager.get_class_name(i) for i in class_ids]
+        return {i: class_manager.get_class_name(i) for i in class_ids}
+
+    def _export_yaml_config(self, class_manager: ClassManager, output_dir: str, yaml_filename: str = "data.yaml"):
+        """导出 data.yaml 配置文件"""
         output_path = Path(output_dir)
-        yaml_file = output_path / "data.yaml"
-        
-        # 构建正确格式的names字典
-        class_names = class_manager.get_class_names()
-        names_dict = {i: name for i, name in enumerate(class_names)}
-        
+        yaml_file = output_path / yaml_filename
+
+        names_value = self._build_names_config(class_manager)
+
         yaml_data = {
             "path": str(output_path.absolute()),
             "train": "images/train",
             "val": "images/val",
             "test": "images/test",
             "nc": class_manager.get_class_count(),
-            "names": names_dict  # 使用字典格式
+            "names": names_value
         }
-        
+
         with open(yaml_file, 'w', encoding='utf-8') as f:
             yaml.dump(yaml_data, f, default_flow_style=False, allow_unicode=True)
-    
+
     def export_single_image(
         self,
         image_path: str,
         annotations: List,
         output_dir: str,
-        class_manager: ClassManager
+        class_manager: ClassManager,
+        yaml_filename: str = "data.yaml"
     ):
-        """导出单张图片的YOLO格式"""
+        """导出单张图片的 YOLO 格式"""
         output_path = Path(output_dir)
-        
+
         # 创建输出目录
         output_path.mkdir(parents=True, exist_ok=True)
-        
-        # 获取图片信息
+
+        # 获取图片尺寸
         from PIL import Image
         with Image.open(image_path) as img:
             image_width, image_height = img.size
-        
+
         # 导出标注
         image_name = Path(image_path).stem
         label_file = output_path / f"{image_name}.txt"
-        
+
         with open(label_file, 'w', encoding='utf-8') as f:
             for ann in annotations:
                 if hasattr(ann, 'to_yolo_format'):
@@ -307,44 +312,41 @@ class YOLOExporter:
                     width = ann.get('width', 0)
                     height = ann.get('height', 0)
                     class_id = ann.get('class_id', 0)
-                    
+
                     x_center = (x + width / 2) / image_width
                     y_center = (y + height / 2) / image_height
                     norm_width = width / image_width
                     norm_height = height / image_height
-                    
+
                     yolo_data = [class_id, x_center, y_center, norm_width, norm_height]
-                
-                # 写入文件 - class_id为整数，坐标值为浮点数
+
                 if len(yolo_data) >= 5:
                     line = f"{int(yolo_data[0])} {yolo_data[1]:.6f} {yolo_data[2]:.6f} {yolo_data[3]:.6f} {yolo_data[4]:.6f}"
                 else:
                     line = " ".join(f"{val:.6f}" for val in yolo_data)
                 f.write(line + "\n")
-        
+
         # 复制图片
         image_output = output_path / Path(image_path).name
         shutil.copy2(image_path, image_output)
-        
-        # 导出简化的配置文件
-        config_file = output_path / "data.yaml"
-        
-        # 构建正确格式的names字典
-        class_names = class_manager.get_class_names()
-        names_dict = {i: name for i, name in enumerate(class_names)}
-        
+
+        # 导出简化配置
+        config_file = output_path / yaml_filename
+
+        names_value = self._build_names_config(class_manager)
+
         config_data = {
             "path": str(output_path.absolute()),
-            "train": ".",  
-            "val": ".",  
-            "test": ".",  
+            "train": ".",
+            "val": ".",
+            "test": ".",
             "nc": class_manager.get_class_count(),
-            "names": names_dict  # 使用字典格式
+            "names": names_value
         }
-        
+
         with open(config_file, 'w', encoding='utf-8') as f:
             yaml.dump(config_data, f, default_flow_style=False, allow_unicode=True)
-    
+
     def export_with_custom_split(
         self,
         image_manager: ImageManager,
@@ -354,7 +356,8 @@ class YOLOExporter:
         train_paths: List[str],
         val_paths: List[str],
         test_paths: List[str],
-        copy_images: bool = True
+        copy_images: bool = True,
+        yaml_filename: str = "data.yaml"
     ):
         """使用自定义划分导出数据集"""
         # 创建输出目录结构
@@ -378,9 +381,9 @@ class YOLOExporter:
         self._export_split_files(output_dir, train_paths, val_paths, test_paths)
         
         # 导出data.yaml配置文件
-        self._export_yaml_config(class_manager, output_dir)
+        self._export_yaml_config(class_manager, output_dir, yaml_filename)
     
-    def validate_export(self, output_dir: str) -> Dict:
+    def validate_export(self, output_dir: str, yaml_filename: str = "data.yaml") -> Dict:
         """验证导出结果"""
         output_path = Path(output_dir)
         validation_result = {
@@ -402,7 +405,7 @@ class YOLOExporter:
                     validation_result["valid"] = False
             
             # 检查data.yaml文件
-            yaml_file = output_path / "data.yaml"
+            yaml_file = output_path / yaml_filename
             if not yaml_file.exists():
                 validation_result["errors"].append("data.yaml文件不存在")
                 validation_result["valid"] = False

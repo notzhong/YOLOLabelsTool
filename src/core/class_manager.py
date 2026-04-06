@@ -156,57 +156,65 @@ class ClassManager:
         return (r, g, b)
     
     def export_to_yaml(self, output_path: str, dataset_path: str = "./dataset"):
-        """导出为YOLO格式的data.yaml文件"""
-        # 构建正确格式的names字典
-        names_dict = {}
-        for class_id in sorted(self._classes.keys()):
-            names_dict[class_id] = self.get_class_name(class_id)
-        
+        """导出 YOLO 格式的 data.yaml"""
+        class_ids = sorted(self._classes.keys())
+        if class_ids and class_ids == list(range(max(class_ids) + 1)):
+            names_value = [self._classes[i]["name"] for i in class_ids]
+        else:
+            names_value = {i: self._classes[i]["name"] for i in class_ids}
+
         yaml_data = {
             "path": dataset_path,
             "train": "images/train",
             "val": "images/val",
             "test": "images/test",
             "nc": self.get_class_count(),
-            "names": names_dict  # 使用字典格式
+            "names": names_value
         }
-        
-        # 保存YAML文件
+
         with open(output_path, 'w', encoding='utf-8') as f:
             yaml.dump(yaml_data, f, default_flow_style=False, allow_unicode=True)
-    
+
     def import_from_yaml(self, yaml_path: str):
-        """从YAML文件导入类别"""
+        """从 YAML 导入类别（names 支持列表或字典）"""
         try:
             with open(yaml_path, 'r', encoding='utf-8') as f:
                 yaml_data = yaml.safe_load(f)
-            
-            # 清空现有类别
+
+            # Clear existing classes
             self._classes.clear()
-            
-            # 解析类别
+
             names = yaml_data.get("names", [])
-            for class_id, name in enumerate(names):
-                color = self._generate_color()
-                self._classes[class_id] = {
-                    "name": name,
-                    "color": color
-                }
-            
+            if isinstance(names, dict):
+                for class_id_str, name in names.items():
+                    class_id = int(class_id_str)
+                    color = self._generate_color()
+                    self._classes[class_id] = {
+                        "name": name,
+                        "color": color
+                    }
+            else:
+                for class_id, name in enumerate(names):
+                    color = self._generate_color()
+                    self._classes[class_id] = {
+                        "name": name,
+                        "color": color
+                    }
+
             self._update_next_class_id()
             return True
-            
+
         except Exception as e:
-            self.logger.error(f"导入YAML文件失败: {e}")
+            self.logger.error(f"Import YAML failed: {e}")
             return False
-    
+
     def save_to_json(self, json_path: str):
-        """保存类别到JSON文件"""
+        """保存类别到 JSON"""
         classes_data = self.get_classes_list()
-        
+
         with open(json_path, 'w', encoding='utf-8') as f:
             json.dump(classes_data, f, indent=2, ensure_ascii=False)
-    
+
     def load_from_json(self, json_path: str):
         """从JSON文件加载类别"""
         try:

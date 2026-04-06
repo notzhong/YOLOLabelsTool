@@ -4,6 +4,7 @@
 
 import os
 import json
+import hashlib
 from dataclasses import dataclass, asdict
 from typing import List, Dict, Optional, Tuple, Any
 from pathlib import Path
@@ -185,10 +186,17 @@ class AnnotationManager:
         # 创建标注目录
         Path(self._annotation_dir).mkdir(exist_ok=True)
     
+    def _legacy_annotation_path(self, image_path: str) -> str:
+        """获取旧版标注文件路径（仅使用文件名）"""
+        image_name = Path(image_path).stem
+        return os.path.join(self._annotation_dir, f"{image_name}.json")
+
     def get_annotation_path(self, image_path: str) -> str:
         """获取标注文件路径"""
         image_name = Path(image_path).stem
-        return os.path.join(self._annotation_dir, f"{image_name}.json")
+        # 基于全路径生成短 Hash，避免同名文件冲突
+        digest = hashlib.md5(image_path.encode("utf-8", errors="ignore")).hexdigest()[:8]
+        return os.path.join(self._annotation_dir, f"{image_name}_{digest}.json")
     
     def save_annotations(self, image_path: str, annotations: List[Annotation]):
         """保存标注到文件"""
@@ -217,7 +225,10 @@ class AnnotationManager:
         annotation_path = self.get_annotation_path(image_path)
         
         if not os.path.exists(annotation_path):
-            return []
+            legacy_path = self._legacy_annotation_path(image_path)
+            if not os.path.exists(legacy_path):
+                return []
+            annotation_path = legacy_path
         
         try:
             with open(annotation_path, 'r', encoding='utf-8') as f:
@@ -225,6 +236,11 @@ class AnnotationManager:
             
             annotations = [Annotation.from_dict(data) for data in annotations_data]
             self._annotations[image_path] = annotations
+            if annotation_path == self._legacy_annotation_path(image_path):
+                try:
+                    self.save_annotations(image_path, annotations)
+                except Exception:
+                    pass
             return annotations
         except (json.JSONDecodeError, IOError) as e:
             self.logger.error(f"加载标注文件失败: {e}")
@@ -240,7 +256,10 @@ class AnnotationManager:
     def has_annotations(self, image_path: str) -> bool:
         """检查是否有标注"""
         annotation_path = self.get_annotation_path(image_path)
-        return os.path.exists(annotation_path)
+        if os.path.exists(annotation_path):
+            return True
+        legacy_path = self._legacy_annotation_path(image_path)
+        return os.path.exists(legacy_path)
     
     def add_annotation(self, image_path: str, annotation: Annotation):
         """添加单个标注"""
@@ -259,10 +278,14 @@ class AnnotationManager:
         """清除指定图片的所有标注"""
         self._annotations[image_path] = []
         
-        # 删除标注文件
-        annotation_path = self.get_annotation_path(image_path)
-        if os.path.exists(annotation_path):
-            os.remove(annotation_path)
+        # 删除新/旧标注文件
+        paths_to_remove = [
+            self.get_annotation_path(image_path),
+            self._legacy_annotation_path(image_path),
+        ]
+        for annotation_path in paths_to_remove:
+            if os.path.exists(annotation_path):
+                os.remove(annotation_path)
     
     def get_all_annotations(self) -> Dict[str, List[Annotation]]:
         """获取所有图片的标注"""

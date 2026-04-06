@@ -1,4 +1,4 @@
-# YOLO Label Tool
+﻿# YOLO Label Tool
 
 基于 PySide6 的 YOLO 标注和训练工具，支持手动标注、模型辅助标注和模型训练功能。
 
@@ -163,10 +163,10 @@ output/
 │   ├── train/      # 训练集标注（txt格式）
 │   ├── val/        # 验证集标注
 │   └── test/       # 测试集标注
-├── train.txt       # 训练集图片路径列表
-├── val.txt         # 验证集图片路径列表
-├── test.txt        # 测试集图片路径列表
-└── data.yaml       # 数据集配置文件
+├── train.txt       # 训练集图片路径列表（images/train/xxx.jpg）
+├── val.txt         # 验证集图片路径列表（images/val/xxx.jpg）
+├── test.txt        # 测试集图片路径列表（images/test/xxx.jpg）
+└── data.yaml       # 数据集配置文件（导出时可自定义文件名）
 ```
 
 ### data.yaml 格式
@@ -177,7 +177,7 @@ val: images/val
 test: images/test
 
 nc: 0  # 类别数量（根据实际添加的类别自动计算）
-names: []  # 类别名称列表（用户自定义）
+names: []  # 类别名称列表（ID 连续时为 list；不连续时为 dict）
 ```
 
 ### 标注文件格式（.txt）
@@ -313,7 +313,7 @@ YoloLabelTool/
 ├── config/                # 配置文件目录
 │   └── config.ini         # 用户配置设置
 ├── annotations/           # 标注文件目录
-│   └── *.json             # 标注数据文件
+│   └── *_{hash}.json      # 标注数据文件（文件名+短哈希，避免同名冲突）
 ├── model/                 # 模型文件目录（可选）
 ├── qss/                   # 主题样式文件
 │   ├── dark_theme.qss     # 黑夜主题样式

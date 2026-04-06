@@ -1641,24 +1641,40 @@ class MainWindow(QMainWindow):
         if not self.current_image_path:
             QMessageBox.warning(self, tr("warning"), tr("no_image_loaded"))
             return
-        
+
         output_dir = QFileDialog.getExistingDirectory(
             self, tr("export_yolo_format_dialog_title"), 
             str(Path.cwd())
         )
-        
+
         if output_dir:
             try:
+                # 允许自定义 data.yaml 文件名
+                default_yaml_path = str(Path(output_dir) / "data.yaml")
+                yaml_path, _ = QFileDialog.getSaveFileName(
+                    self,
+                    tr("export_yaml_filename_dialog_title"),
+                    default_yaml_path,
+                    tr("yaml_file_filter")
+                )
+                if yaml_path:
+                    yaml_filename = Path(yaml_path).name
+                    if not yaml_filename.lower().endswith((".yaml", ".yml")):
+                        yaml_filename += ".yaml"
+                else:
+                    yaml_filename = "data.yaml"
+
                 self.yolo_exporter.export(
                     self.image_manager,
                     self.annotation_manager,
                     self.class_manager,
-                    output_dir
+                    output_dir,
+                    yaml_filename=yaml_filename
                 )
                 QMessageBox.information(self, tr("success"), f"{tr('export_success')} {output_dir}")
             except Exception as e:
                 QMessageBox.critical(self, tr("error"), f"{tr('export_failed')} {str(e)}")
-    
+
     def export_dataset_split(self):
         """导出数据集划分"""
         if not self.current_image_path:
