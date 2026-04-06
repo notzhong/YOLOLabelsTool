@@ -851,7 +851,10 @@ class MainWindow(QMainWindow):
         
         self.action_model_info = QAction(tr("model_info"), self)
         self.action_model_info.triggered.connect(self.show_model_info)
-        
+
+        self.action_validation_window = QAction(tr("validation_window"), self)
+        self.action_validation_window.triggered.connect(self.open_validation_window)
+
         # 标注操作
         self.action_auto_annotate = QAction(tr("auto_annotate"), self)
         self.action_auto_annotate.setShortcut("Ctrl+A")
@@ -918,6 +921,7 @@ class MainWindow(QMainWindow):
         self.model_menu = menubar.addMenu(tr("model"))
         self.model_menu.addAction(self.action_load_model)
         self.model_menu.addAction(self.action_model_info)
+        self.model_menu.addAction(self.action_validation_window)
         self.model_menu.addSeparator()
         self.model_menu.addAction(self.action_train_model)
         self.model_menu.addSeparator()
@@ -2062,7 +2066,20 @@ class MainWindow(QMainWindow):
         else:
             self.action_model_info.setText(tr("show_model_info"))
             self.update_status(tr("model_info_panel_hidden"))
-    
+
+    def open_validation_window(self):
+        """打开验证窗口"""
+        try:
+            from src.ui.validation_dialog import ValidationDialog
+            dialog = ValidationDialog(self, self.model_manager)
+            dialog.exec()
+        except Exception as e:
+            self.logger.error(f"打开验证窗口失败: {e}")
+            QMessageBox.critical(
+                self, tr("error"),
+                tr("open_validation_window_failed").replace("{error}", str(e))
+            )
+
     def auto_annotate_current(self):
         """自动标注当前图片"""
         if not self.current_image_path:

@@ -8,9 +8,16 @@ from pathlib import Path
 from typing import List, Tuple, Dict
 import yaml
 
-from ..core.annotation import AnnotationManager
-from ..core.image_manager import ImageManager
-from ..core.class_manager import ClassManager
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..core.annotation import AnnotationManager
+    from ..core.image_manager import ImageManager
+    from ..core.class_manager import ClassManager
+else:
+    from ..core.image_manager import ImageManager
+    from ..core.class_manager import ClassManager
+    # AnnotationManager will be imported locally where needed
 from ..utils.logger import get_logger_simple
 
 
@@ -29,7 +36,7 @@ class YOLOExporter:
     def export(
         self,
         image_manager: ImageManager,
-        annotation_manager: AnnotationManager,
+        annotation_manager: 'AnnotationManager',
         class_manager: ClassManager,
         output_dir: str,
         split_ratios: Tuple[float, float, float] = (0.7, 0.2, 0.1),
@@ -123,7 +130,7 @@ class YOLOExporter:
         subset_name: str,
         image_paths: List[str],
         image_manager: ImageManager,
-        annotation_manager: AnnotationManager,
+        annotation_manager: 'AnnotationManager',
         class_manager: ClassManager,
         output_dir: str,
         copy_images: bool
@@ -350,7 +357,7 @@ class YOLOExporter:
     def export_with_custom_split(
         self,
         image_manager: ImageManager,
-        annotation_manager: AnnotationManager,
+        annotation_manager: 'AnnotationManager',
         class_manager: ClassManager,
         output_dir: str,
         train_paths: List[str],
