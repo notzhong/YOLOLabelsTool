@@ -18,6 +18,9 @@ from PySide6.QtGui import QFont
 
 from yolo_tool import YOLOTrainer
 from src.utils.i18n import tr
+from src.utils.logger import get_logger_simple
+
+logger = get_logger_simple(__name__)
 
 
 class TrainDialog(QDialog):
@@ -839,7 +842,7 @@ class TrainDialog(QDialog):
         except Exception as e:
             # 加载失败时不中断程序
             from src.utils.i18n import tr
-            print(tr("load_last_config_failed").replace("{error}", str(e)))
+            logger.error(tr("load_last_config_failed").replace("{error}", str(e)))
     
     def save_last_config(self):
         """保存当前配置到配置文件"""
@@ -864,7 +867,7 @@ class TrainDialog(QDialog):
             self.log_message(tr("config_auto_saved"))
         except Exception as e:
             # 保存失败时不中断程序
-            print(tr("config_auto_save_failed").replace("{error}", str(e)))
+            logger.error(tr("config_auto_save_failed").replace("{error}", str(e)))
     
     def connect_config_change_signals(self):
         """连接所有控件的修改信号，以便在配置发生变化时自动保存"""
@@ -975,7 +978,7 @@ class TrainDialog(QDialog):
     
     def log_message(self, message: str):
         """记录消息到控制台"""
-        print(f"[TrainDialog] {message}")
+        logger.info(f"[TrainDialog] {message}")
     
     def reset_to_defaults(self):
         """重置所有参数到市场最优默认值"""

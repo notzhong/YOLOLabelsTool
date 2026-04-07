@@ -68,7 +68,7 @@ def get_logger(name: str, level: int = logging.INFO) -> logging.Logger:
 _logger_cache = {}
 
 
-def get_logger_simple(name: str) -> logging.Logger:
+def get_logger_simple(name: str, log_level = logging.INFO) -> logging.Logger:
     """
     简化版获取日志记录器（推荐使用）
     
@@ -81,7 +81,7 @@ def get_logger_simple(name: str) -> logging.Logger:
     if name in _logger_cache:
         return _logger_cache[name]
     
-    logger = get_logger(name)
+    logger = get_logger(name, log_level)
     _logger_cache[name] = logger
     return logger
 
