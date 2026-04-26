@@ -13,6 +13,7 @@ from PySide6.QtCore import Qt, QTimer, QRect, QPoint, QSize, QEvent
 from PySide6.QtGui import QImage, QPixmap, QCursor, QGuiApplication, QWindow, QScreen
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QComboBox,
     QDialog,
     QDoubleSpinBox,
@@ -157,32 +158,24 @@ class RegionSelector(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setModal(True)  # 设置为模态对话框，阻塞父窗口直到选择完成
-        # 窗口标志：无边框，置顶，作为普通窗口
+        self.setModal(True)
+        # 无边框置顶顶层窗口，用于覆盖整个屏幕进行区域选择
         flags = Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Window
         self.setWindowFlags(flags)
         self.setCursor(Qt.CrossCursor)
-        self.setAttribute(Qt.WA_TranslucentBackground, True)
-        self.setAttribute(Qt.WA_DeleteOnClose, False)  # 不自动删除窗口
-        # 设置对话框覆盖整个虚拟桌面
-        virtual_geometry = self._virtual_geometry()
-        logger.debug(f"RegionSelector初始化，虚拟几何: {virtual_geometry}, 父窗口: {parent}, 父窗口ID: {parent.winId() if parent else 'None'}")
-        self.setGeometry(virtual_geometry)
-
-        # 确保能接收键盘和鼠标事件
+        self.setAttribute(Qt.WA_DeleteOnClose, False)
+        self.setGeometry(self._virtual_geometry())
         self.setFocusPolicy(Qt.StrongFocus)
-        # 安装事件过滤器来监控窗口事件
-        self.installEventFilter(self)
 
-        # 设置轻微透明度，让用户知道正在选择区域
-        self.setWindowOpacity(0.5)  # 增加透明度到50%，更容易看到
-        # 设置半透明颜色，让用户知道这是覆盖层
-        self.setStyleSheet("background-color: rgba(128, 128, 128, 128);")  # 灰色半透明背景
+        # 使用统一透明度（setWindowOpacity）替代 per-pixel alpha（WA_TranslucentBackground）
+        # 避免分层窗口在 exec() 模态事件循环中的消息处理问题
+        self.setStyleSheet("background-color: #1a1a1a;")
+        self.setWindowOpacity(0.25)
 
         self._origin_global = QPoint()
         self._rubber_band = QRubberBand(QRubberBand.Rectangle, self)
         self._selected_rect: Optional[QRect] = None
-        self._selection_started = False  # 标记是否已开始选择
+        self._selection_started = False
         logger.debug("RegionSelector初始化完成")
 
     def showEvent(self, event):
@@ -316,7 +309,6 @@ class ValidationDialog(QDialog):
     SOURCE_WINDOW = 0
     SOURCE_REGION = 1
     SOURCE_IMAGE = 2
-    DRAG_THRESHOLD = 2  # 像素，最小拖动距离阈值（防止误点击）
 
     def __init__(self, parent, model_manager):
         super().__init__(parent)
@@ -342,13 +334,12 @@ class ValidationDialog(QDialog):
         self._pick_prev_right_down = False
         self._pick_ignore_until = 0.0
         self._pick_cursor_owned = False
-        # For drag-to-select
-        self._pick_drag_start_pos = None
-        self._pick_drag_start_time = 0.0
-        self._pick_drag_start_hwnd = None
-        self._pick_dragging = False
         # Window highlighter
         self._highlighter = None
+
+        # Display settings
+        self.label_font_size = 0.5
+        self.show_confidence = True
 
         self._init_ui()
         self._update_model_status()
@@ -437,6 +428,33 @@ class ValidationDialog(QDialog):
 
         left_panel.addWidget(params_group)
 
+        display_group = QGroupBox(tr("display_settings"))
+        display_layout = QVBoxLayout(display_group)
+
+        font_row = QHBoxLayout()
+        font_label = QLabel(tr("label_font_size"))
+        self.font_size_slider = QSlider(Qt.Horizontal)
+        self.font_size_slider.setRange(1, 20)
+        self.font_size_slider.setValue(int(self.label_font_size * 10))
+        self.font_size_spin = QDoubleSpinBox()
+        self.font_size_spin.setRange(0.1, 2.0)
+        self.font_size_spin.setSingleStep(0.1)
+        self.font_size_spin.setValue(self.label_font_size)
+        self.font_size_spin.setDecimals(1)
+        self.font_size_slider.valueChanged.connect(self._on_font_size_slider)
+        self.font_size_spin.valueChanged.connect(self._on_font_size_spin)
+        font_row.addWidget(font_label)
+        font_row.addWidget(self.font_size_slider, 1)
+        font_row.addWidget(self.font_size_spin)
+        display_layout.addLayout(font_row)
+
+        self.show_conf_check = QCheckBox(tr("show_confidence"))
+        self.show_conf_check.setChecked(self.show_confidence)
+        self.show_conf_check.toggled.connect(self._on_show_conf_toggled)
+        display_layout.addWidget(self.show_conf_check)
+
+        left_panel.addWidget(display_group)
+
         self.btn_toggle = QPushButton(tr("start_detect"))
         self.btn_toggle.clicked.connect(self._toggle_detect)
         left_panel.addWidget(self.btn_toggle)
@@ -505,7 +523,6 @@ class ValidationDialog(QDialog):
 
     def _pick_window(self):
         if self.picking_window:
-            # Second click on the same button cancels pick mode.
             self._stop_window_pick(confirmed=False)
             return
 
@@ -513,8 +530,8 @@ class ValidationDialog(QDialog):
         self.btn_pick_window.setText(tr("picking_window"))
         self._pick_prev_left_down = bool(_user32.GetAsyncKeyState(VK_LBUTTON) & 0x8000)
         self._pick_prev_right_down = bool(_user32.GetAsyncKeyState(VK_RBUTTON) & 0x8000)
-        # No ignore period - drag threshold prevents accidental selection
-        self._pick_ignore_until = 0.0
+        # Ignore button events for 300ms to swallow the release from clicking the "pick" button
+        self._pick_ignore_until = time.monotonic() + 0.3
         if QApplication.overrideCursor() is None:
             QApplication.setOverrideCursor(Qt.CrossCursor)
             self._pick_cursor_owned = True
@@ -529,11 +546,6 @@ class ValidationDialog(QDialog):
         if self._pick_cursor_owned:
             QApplication.restoreOverrideCursor()
             self._pick_cursor_owned = False
-
-        # Clean up drag state
-        self._pick_drag_start_pos = None
-        self._pick_drag_start_hwnd = None
-        self._pick_dragging = False
 
         # Remove window highlighter
         self._cleanup_highlighter()
@@ -561,62 +573,39 @@ class ValidationDialog(QDialog):
         # Update window highlighter based on current cursor position
         self._update_window_highlighter(hwnd if valid_candidate else 0)
 
-        # Update current_hwnd and label only if not dragging
-        if not self._pick_dragging:
+        # Update label with the window under cursor
+        if valid_candidate:
             if hwnd != self.current_hwnd:
-                if valid_candidate:
-                    self.current_hwnd = hwnd
-                    # Update label with window title
-                    title = _get_window_title(hwnd)
-                    self.window_info_label.setText(tr("window_selected").replace("{title}", title))
-                else:
-                    self.current_hwnd = None
-                    self.window_info_label.setText(tr("window_not_selected"))
+                self.current_hwnd = hwnd
+                title = _get_window_title(hwnd)
+                self.window_info_label.setText(tr("window_selected").replace("{title}", title))
+        else:
+            if self.current_hwnd is not None:
+                self.current_hwnd = None
+                self.window_info_label.setText(tr("window_not_selected"))
 
         now = time.monotonic()
+        # Ignore button events during cooldown period (swallow the button click that started pick mode)
+        if now < self._pick_ignore_until:
+            return
+
         left_down = bool(_user32.GetAsyncKeyState(VK_LBUTTON) & 0x8000)
         right_down = bool(_user32.GetAsyncKeyState(VK_RBUTTON) & 0x8000)
         # Convert key level state into edge events (pressed this tick).
         left_pressed = left_down and not self._pick_prev_left_down
-        left_released = not left_down and self._pick_prev_left_down
         right_pressed = right_down and not self._pick_prev_right_down
         self._pick_prev_left_down = left_down
         self._pick_prev_right_down = right_down
 
-        # Handle right click cancel (ignore time limit for cancel)
+        # Right click cancels pick mode
         if right_pressed:
             self._stop_window_pick(confirmed=False)
             return
 
-        # Handle left button events
-        if left_pressed:
-            # Mouse button just pressed - start tracking drag
-            self._pick_drag_start_pos = QCursor.pos()
-            self._pick_drag_start_time = now
-            self._pick_dragging = True
-        elif left_released and self._pick_drag_start_pos is not None:
-            # Mouse button released - check if we should confirm selection
-            release_pos = QCursor.pos()
-            dx = release_pos.x() - self._pick_drag_start_pos.x()
-            dy = release_pos.y() - self._pick_drag_start_pos.y()
-            distance = abs(dx) + abs(dy)  # 曼哈顿距离
-
-            if distance >= self.DRAG_THRESHOLD and valid_candidate:
-                # 拖动距离足够且释放时在有效窗口上 - 确认选择
-                self.current_hwnd = hwnd
-                self._stop_window_pick(confirmed=True)
-            else:
-                # 拖动距离不足或释放位置无效 - 取消选择
-                self._stop_window_pick(confirmed=False)
-            # Reset drag state
-            self._pick_drag_start_pos = None
-        elif left_down and self._pick_drag_start_pos is not None:
-            # Mouse is being held down - update highlighter based on current window
-            # No action needed here, highlighter is updated elsewhere
-            pass
-        else:
-            # No button activity - just update highlighter
-            pass
+        # Left click on a valid window confirms the selection
+        if left_pressed and valid_candidate:
+            self.current_hwnd = hwnd
+            self._stop_window_pick(confirmed=True)
 
     def _update_window_highlighter(self, hwnd: int):
         """Update or create window highlighter for the given window handle."""
@@ -683,6 +672,9 @@ class ValidationDialog(QDialog):
             logger.debug("区域选择过程结束，清理资源")
             # 确保选择器窗口被关闭
             selector.close()
+            # 确保验证窗口重新获取焦点
+            self.raise_()
+            self.activateWindow()
 
     def _browse_image(self):
         image_path, _ = QFileDialog.getOpenFileName(
@@ -1003,15 +995,19 @@ class ValidationDialog(QDialog):
             conf = float(det.get("confidence", 0))
             cls_id = det.get("class_id", 0)
 
+            label = det.get("class_name", str(cls_id))
+            if self.show_confidence:
+                label += f":{conf:.2f}"
+
             cv2.rectangle(vis, (x, y), (x + w, y + h), (0, 255, 0), 2)
             cv2.putText(
                 vis,
-                f"{cls_id}:{conf:.2f}",
+                label,
                 (x, max(0, y - 4)),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
+                self.label_font_size,
                 (0, 255, 0),
-                1,
+                max(1, int(self.label_font_size * 2)),
             )
 
         self._update_preview(vis)
@@ -1054,6 +1050,23 @@ class ValidationDialog(QDialog):
         self.iou_slider.setValue(slider_value)
         self.iou_slider.blockSignals(False)
         self.model_manager.set_iou_threshold(value)
+
+    def _on_font_size_slider(self, value: int):
+        font_val = value / 10.0
+        self.font_size_spin.blockSignals(True)
+        self.font_size_spin.setValue(font_val)
+        self.font_size_spin.blockSignals(False)
+        self.label_font_size = font_val
+
+    def _on_font_size_spin(self, value: float):
+        slider_val = int(value * 10)
+        self.font_size_slider.blockSignals(True)
+        self.font_size_slider.setValue(slider_val)
+        self.font_size_slider.blockSignals(False)
+        self.label_font_size = value
+
+    def _on_show_conf_toggled(self, checked: bool):
+        self.show_confidence = checked
 
     def closeEvent(self, event):
         self._stop()
