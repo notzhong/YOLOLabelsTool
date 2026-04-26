@@ -5,7 +5,7 @@ YOLO格式导出器
 import os
 import shutil
 from pathlib import Path
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Any
 import yaml
 
 from typing import TYPE_CHECKING
@@ -19,6 +19,36 @@ else:
     from ..core.class_manager import ClassManager
     # AnnotationManager will be imported locally where needed
 from ..utils.logger import get_logger_simple
+
+
+def annotation_to_yolo_lines(annotations: List[Any], image_width: int, image_height: int) -> List[str]:
+    """
+    将 Annotation 列表转换为 YOLO 格式文本行。
+
+    支持 dataclass Annotation（有 to_yolo_format 方法）和普通 dict 两种输入。
+    """
+    lines = []
+    for ann in annotations:
+        if hasattr(ann, 'to_yolo_format'):
+            yolo_data = ann.to_yolo_format(image_width, image_height)
+        else:
+            x = ann.get('x', 0)
+            y = ann.get('y', 0)
+            width = ann.get('width', 0)
+            height = ann.get('height', 0)
+            class_id = ann.get('class_id', 0)
+            x_center = (x + width / 2) / image_width
+            y_center = (y + height / 2) / image_height
+            norm_width = width / image_width
+            norm_height = height / image_height
+            yolo_data = [class_id, x_center, y_center, norm_width, norm_height]
+
+        if len(yolo_data) >= 5:
+            line = f"{int(yolo_data[0])} {yolo_data[1]:.6f} {yolo_data[2]:.6f} {yolo_data[3]:.6f} {yolo_data[4]:.6f}"
+        else:
+            line = " ".join(f"{val:.6f}" for val in yolo_data)
+        lines.append(line)
+    return lines
 
 
 class YOLOExporter:
@@ -177,34 +207,10 @@ class YOLOExporter:
         """导出YOLO格式标注文件"""
         image_name = Path(image_path).stem
         output_file = output_labels_dir / f"{image_name}.txt"
-        
+
+        lines = annotation_to_yolo_lines(annotations, image_width, image_height)
         with open(output_file, 'w', encoding='utf-8') as f:
-            for ann in annotations:
-                # 转换为YOLO格式
-                if hasattr(ann, 'to_yolo_format'):
-                    yolo_data = ann.to_yolo_format(image_width, image_height)
-                else:
-                    # 如果是字典格式
-                    x = ann.get('x', 0)
-                    y = ann.get('y', 0)
-                    width = ann.get('width', 0)
-                    height = ann.get('height', 0)
-                    class_id = ann.get('class_id', 0)
-                    
-                    # 计算YOLO格式
-                    x_center = (x + width / 2) / image_width
-                    y_center = (y + height / 2) / image_height
-                    norm_width = width / image_width
-                    norm_height = height / image_height
-                    
-                    yolo_data = [class_id, x_center, y_center, norm_width, norm_height]
-                
-                # 写入文件 - class_id为整数，坐标值为浮点数
-                if len(yolo_data) >= 5:
-                    line = f"{int(yolo_data[0])} {yolo_data[1]:.6f} {yolo_data[2]:.6f} {yolo_data[3]:.6f} {yolo_data[4]:.6f}"
-                else:
-                    line = " ".join(f"{val:.6f}" for val in yolo_data)
-                f.write(line + "\n")
+            f.write("\n".join(lines) + ("\n" if lines else ""))
     
     def _copy_image(self, image_path: str, output_images_dir: Path):
         """复制图片到输出目录"""
@@ -309,29 +315,9 @@ class YOLOExporter:
         image_name = Path(image_path).stem
         label_file = output_path / f"{image_name}.txt"
 
+        lines = annotation_to_yolo_lines(annotations, image_width, image_height)
         with open(label_file, 'w', encoding='utf-8') as f:
-            for ann in annotations:
-                if hasattr(ann, 'to_yolo_format'):
-                    yolo_data = ann.to_yolo_format(image_width, image_height)
-                else:
-                    x = ann.get('x', 0)
-                    y = ann.get('y', 0)
-                    width = ann.get('width', 0)
-                    height = ann.get('height', 0)
-                    class_id = ann.get('class_id', 0)
-
-                    x_center = (x + width / 2) / image_width
-                    y_center = (y + height / 2) / image_height
-                    norm_width = width / image_width
-                    norm_height = height / image_height
-
-                    yolo_data = [class_id, x_center, y_center, norm_width, norm_height]
-
-                if len(yolo_data) >= 5:
-                    line = f"{int(yolo_data[0])} {yolo_data[1]:.6f} {yolo_data[2]:.6f} {yolo_data[3]:.6f} {yolo_data[4]:.6f}"
-                else:
-                    line = " ".join(f"{val:.6f}" for val in yolo_data)
-                f.write(line + "\n")
+            f.write("\n".join(lines) + ("\n" if lines else ""))
 
         # 复制图片
         image_output = output_path / Path(image_path).name

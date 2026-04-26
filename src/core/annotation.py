@@ -171,11 +171,14 @@ class DeleteAnnotationCommand(Command):
 
 class AnnotationManager:
     """标注管理器"""
-    
+
+    # 撤销栈最大深度，防止内存无限增长
+    MAX_UNDO_SIZE = 100
+
     def __init__(self):
         self._annotations: Dict[str, List[Annotation]] = {}
         self._annotation_dir = "annotations"
-        
+
         # 历史记录栈
         self._undo_stack: List[Command] = []
         self._redo_stack: List[Command] = []
@@ -354,6 +357,9 @@ class AnnotationManager:
         """执行命令"""
         command.execute()
         self._undo_stack.append(command)
+        # 限制撤销栈大小，防止内存无限增长
+        if len(self._undo_stack) > self.MAX_UNDO_SIZE:
+            self._undo_stack.pop(0)
         self._redo_stack.clear()  # 执行新命令时清空重做栈
     
     def undo(self) -> bool:

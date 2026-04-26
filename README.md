@@ -485,6 +485,17 @@ A: 窗口捕获和区域捕获模式需要安装 `dxcam` 库（`pip install dxca
 
 ## 更新日志
 
+### v1.6.0 (2026-04-26)
+- **重构 YOLO 导出**：提取通用 `annotation_to_yolo_lines()` 函数，消除 yolo_exporter 与 dataset_splitter 间的标签写入重复代码
+- **优化统计面板**：`update_statistics_panel()` 改用缓存字典，消除 O(n) 磁盘 I/O
+- **修复撤销/重做按钮匹配**：移除按翻译文本匹配工具栏按钮的脆弱逻辑，改用 QAction 对象直接绑定
+- **限制撤销栈深度**：添加 `MAX_UNDO_SIZE = 100`，防止内存无限增长
+- **修复类别 ID 空洞**：删除类别时始终更新 `_next_class_id`，避免 ID 跳跃浪费
+- **重构模型推理**：提取 `_process_boxes()` 共享方法，消除 `predict()` 与 `predict_image()` 中的重复 box 处理代码
+- **优化十字准线渲染**：复用图形项替代每次 mouseMove 创建/销毁，减少 GC 压力
+- **清理 i18n 死代码**：移除未使用的 `_fallback_translations` 与 QTranslator 安装逻辑
+- **精简浏览方法**：将 train_dialog 四个结构相同的浏览方法合并为两个通用方法
+
 ### v1.5.0 (2026-04-26)
 - **新增标签显示控制**：检测标签字体大小可调（滑块0.1~2.0），置信度显示可开关
 - **标签显示优化**：检测结果框显示类别名称（如 `person`）而非数字ID

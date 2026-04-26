@@ -68,6 +68,28 @@ class ModelManager:
             self.model_loaded = False
             return False
     
+    def _process_boxes(self, boxes, img_width: int, img_height: int) -> List[Dict[str, Any]]:
+        """处理模型输出的 boxes，提取统一格式的检测结果列表"""
+        detections = []
+        for box in boxes:
+            x1, y1, x2, y2 = box.xyxy[0].tolist()
+            x1 = max(0, min(x1, img_width))
+            y1 = max(0, min(y1, img_height))
+            x2 = max(0, min(x2, img_width))
+            y2 = max(0, min(y2, img_height))
+            width = x2 - x1
+            height = y2 - y1
+            if width < 5 or height < 5:
+                continue
+            conf = box.conf[0].item()
+            cls_id = int(box.cls[0].item())
+            class_name = self.class_names.get(cls_id, f"class_{cls_id}")
+            detections.append({
+                'x': x1, 'y': y1, 'width': width, 'height': height,
+                'confidence': conf, 'class_id': cls_id, 'class_name': class_name,
+            })
+        return detections
+
     def predict(self, image_path: str) -> List[Dict[str, Any]]:
         """对图片进行推理，返回检测结果"""
         if not self.model_loaded or not self.model:
@@ -84,11 +106,11 @@ class ModelManager:
             )
             
             detections = []
-            
+
             for result in results:
                 if result.boxes is None:
                     continue
-                
+
                 # 获取图片尺寸
                 if hasattr(result, 'orig_shape'):
                     img_height, img_width = result.orig_shape
@@ -99,41 +121,9 @@ class ModelManager:
                         img_height, img_width = img.shape[:2]
                     else:
                         img_width, img_height = 640, 640  # 默认值
-                
-                boxes = result.boxes
-                for box in boxes:
-                    # 获取边界框坐标
-                    x1, y1, x2, y2 = box.xyxy[0].tolist()
-                    
-                    # 确保坐标在图片范围内
-                    x1 = max(0, min(x1, img_width))
-                    y1 = max(0, min(y1, img_height))
-                    x2 = max(0, min(x2, img_width))
-                    y2 = max(0, min(y2, img_height))
-                    
-                    width = x2 - x1
-                    height = y2 - y1
-                    
-                    # 确保框大小合理
-                    if width < 5 or height < 5:
-                        continue
-                    
-                    conf = box.conf[0].item()
-                    cls_id = int(box.cls[0].item())
-                    
-                    # 获取类别名称
-                    class_name = self.class_names.get(cls_id, f"class_{cls_id}")
-                    
-                    detections.append({
-                        'x': x1,
-                        'y': y1,
-                        'width': width,
-                        'height': height,
-                        'confidence': conf,
-                        'class_id': cls_id,
-                        'class_name': class_name
-                    })
-            
+
+                detections.extend(self._process_boxes(result.boxes, img_width, img_height))
+
             self.logger.info(f"检测到 {len(detections)} 个目标")
             return detections
             
@@ -157,48 +147,16 @@ class ModelManager:
             )
             
             detections = []
-            
+
             for result in results:
                 if result.boxes is None:
                     continue
-                
+
                 # 获取图片尺寸
                 img_height, img_width = image_array.shape[:2]
-                
-                boxes = result.boxes
-                for box in boxes:
-                    # 获取边界框坐标
-                    x1, y1, x2, y2 = box.xyxy[0].tolist()
-                    
-                    # 确保坐标在图片范围内
-                    x1 = max(0, min(x1, img_width))
-                    y1 = max(0, min(y1, img_height))
-                    x2 = max(0, min(x2, img_width))
-                    y2 = max(0, min(y2, img_height))
-                    
-                    width = x2 - x1
-                    height = y2 - y1
-                    
-                    # 确保框大小合理
-                    if width < 5 or height < 5:
-                        continue
-                    
-                    conf = box.conf[0].item()
-                    cls_id = int(box.cls[0].item())
-                    
-                    # 获取类别名称
-                    class_name = self.class_names.get(cls_id, f"class_{cls_id}")
-                    
-                    detections.append({
-                        'x': x1,
-                        'y': y1,
-                        'width': width,
-                        'height': height,
-                        'confidence': conf,
-                        'class_id': cls_id,
-                        'class_name': class_name
-                    })
-            
+
+                detections.extend(self._process_boxes(result.boxes, img_width, img_height))
+
             return detections
             
         except Exception as e:

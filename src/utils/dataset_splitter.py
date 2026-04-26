@@ -8,6 +8,7 @@ from typing import List, Tuple, Dict
 import shutil
 
 from ..utils.logger import get_logger_simple
+from ..utils.yolo_exporter import annotation_to_yolo_lines
 
 
 class DatasetSplitter:
@@ -267,33 +268,9 @@ class DatasetSplitter:
         
         # 写入YOLO格式
         try:
+            lines = annotation_to_yolo_lines(annotations, image_width, image_height)
             with open(output_file, 'w', encoding='utf-8') as f:
-                for ann in annotations:
-                    # 转换为YOLO格式
-                    if hasattr(ann, 'to_yolo_format'):
-                        yolo_data = ann.to_yolo_format(image_width, image_height)
-                    else:
-                        # 如果是字典格式
-                        x = ann.get('x', 0)
-                        y = ann.get('y', 0)
-                        width = ann.get('width', 0)
-                        height = ann.get('height', 0)
-                        class_id = ann.get('class_id', 0)
-                        
-                        # 计算YOLO格式
-                        x_center = (x + width / 2) / image_width
-                        y_center = (y + height / 2) / image_height
-                        norm_width = width / image_width
-                        norm_height = height / image_height
-                        
-                        yolo_data = [class_id, x_center, y_center, norm_width, norm_height]
-                    
-                    # 写入文件 - class_id为整数，坐标值为浮点数
-                    if len(yolo_data) >= 5:
-                        line = f"{int(yolo_data[0])} {yolo_data[1]:.6f} {yolo_data[2]:.6f} {yolo_data[3]:.6f} {yolo_data[4]:.6f}"
-                    else:
-                        line = " ".join(f"{val:.6f}" for val in yolo_data)
-                    f.write(line + "\n")
+                f.write("\n".join(lines) + ("\n" if lines else ""))
         except Exception as e:
             self.logger.error(f"写入YOLO标注文件失败 {output_file}: {e}")
     

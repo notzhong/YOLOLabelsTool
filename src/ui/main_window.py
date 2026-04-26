@@ -1197,33 +1197,26 @@ class MainWindow(QMainWindow):
         try:
             # 获取图片总数
             total_images = self.image_manager.get_image_count()
-            
+
             if total_images == 0:
                 self.stats_total_label.setText(tr("total_images_zero"))
                 self.stats_annotated_label.setText(tr("annotated_images_zero"))
                 self.stats_unannotated_label.setText(tr("unannotated_images_zero"))
                 self.stats_table.setRowCount(0)
                 return
-            
-            # 统计已标注和未标注的图片
-            annotated_count = 0
-            unannotated_count = 0
-            class_counts = {}  # 统计各类别标注数量
-            
-            for i in range(total_images):
-                image_path = self.image_manager.get_image_path(i)
-                has_annotations = self.annotation_manager.has_annotations(image_path)
-                
-                if has_annotations:
-                    annotated_count += 1
-                    
-                    # 获取当前图片的标注，统计类别
-                    annotations = self.annotation_manager.get_annotations(image_path)
-                    for annotation in annotations:
-                        class_id = annotation.class_id
-                        class_counts[class_id] = class_counts.get(class_id, 0) + 1
-                else:
-                    unannotated_count += 1
+
+            # 利用 AnnotationManager 的缓存字典，避免每次 O(n) 磁盘 I/O
+            all_anns = self.annotation_manager.get_all_annotations()
+            annotated_paths = set(all_anns.keys())
+            annotated_count = len(annotated_paths)
+            unannotated_count = total_images - annotated_count
+
+            # 统计各类别标注数量
+            class_counts = {}
+            for _, annotations in all_anns.items():
+                for annotation in annotations:
+                    class_id = annotation.class_id
+                    class_counts[class_id] = class_counts.get(class_id, 0) + 1
             
             # 更新标签
             self.stats_total_label.setText(tr("total_images_label") + f" {total_images}")
@@ -1742,17 +1735,10 @@ class MainWindow(QMainWindow):
         """更新撤销/重做菜单和按钮状态"""
         can_undo = self.annotation_manager.can_undo()
         can_redo = self.annotation_manager.can_redo()
-        
-        # 更新动作状态
+
+        # self.action_undo/redo 与工具栏按钮是同一 QAction 对象，直接设置即可
         self.action_undo.setEnabled(can_undo)
         self.action_redo.setEnabled(can_redo)
-        
-        # 更新按钮状态
-        for action in self.toolbar.actions():
-            if action.text() == tr("undo"):
-                action.setEnabled(can_undo)
-            elif action.text() == tr("redo"):
-                action.setEnabled(can_redo)
     
     # ==================== 其他方法 ====================
     
@@ -1873,35 +1859,42 @@ class MainWindow(QMainWindow):
         return True
     
     def draw_crosshair(self, scene_pos: QPointF):
-        """绘制十字准线"""
-        # 移除现有的十字准线
-        for item in self.graphics_scene.items():
-            if hasattr(item, 'is_crosshair') and item.is_crosshair:
-                self.graphics_scene.removeItem(item)
-        
+        """绘制十字准线 — 复用已有图形项，避免反复创建/销毁"""
+        # 第一次调用时创建并保存引用
+        if not hasattr(self, '_crosshair_items') or self._crosshair_items is None:
+            scene_rect = self.graphics_scene.sceneRect()
+            if scene_rect.isNull():
+                return
+            vline = QGraphicsLineItem()
+            vline.setPen(QPen(QColor(255, 255, 0, 128), 1, Qt.DashLine))
+            vline.is_crosshair = True
+            self.graphics_scene.addItem(vline)
+            hline = QGraphicsLineItem()
+            hline.setPen(QPen(QColor(255, 255, 0, 128), 1, Qt.DashLine))
+            hline.is_crosshair = True
+            self.graphics_scene.addItem(hline)
+            dot = QGraphicsEllipseItem(0, 0, 4, 4)
+            dot.setBrush(QBrush(QColor(255, 0, 0, 200)))
+            dot.setPen(QPen(Qt.NoPen))
+            dot.is_crosshair = True
+            self.graphics_scene.addItem(dot)
+            self._crosshair_items = (vline, hline, dot)
+        else:
+            # 隐藏旧十字线（可能已移出可见区域）
+            for item in self._crosshair_items:
+                item.setVisible(False)
+
         # 获取场景边界
         scene_rect = self.graphics_scene.sceneRect()
         if scene_rect.isNull():
             return
-        
-        # 创建垂直线
-        vline = QGraphicsLineItem(scene_rect.x(), scene_pos.y(), scene_rect.x() + scene_rect.width(), scene_pos.y())
-        vline.setPen(QPen(QColor(255, 255, 0, 128), 1, Qt.DashLine))  # 半透明黄色的虚线
-        vline.is_crosshair = True
-        self.graphics_scene.addItem(vline)
-        
-        # 创建水平线
-        hline = QGraphicsLineItem(scene_pos.x(), scene_rect.y(), scene_pos.x(), scene_rect.y() + scene_rect.height())
-        hline.setPen(QPen(QColor(255, 255, 0, 128), 1, Qt.DashLine))  # 半透明黄色的虚线
-        hline.is_crosshair = True
-        self.graphics_scene.addItem(hline)
-        
-        # 在交点处画一个小圆点
-        dot = QGraphicsEllipseItem(scene_pos.x() - 2, scene_pos.y() - 2, 4, 4)
-        dot.setBrush(QBrush(QColor(255, 0, 0, 200)))  # 半透明的红色
-        dot.setPen(QPen(Qt.NoPen))
-        dot.is_crosshair = True
-        self.graphics_scene.addItem(dot)
+
+        vline, hline, dot = self._crosshair_items
+        vline.setLine(scene_rect.x(), scene_pos.y(), scene_rect.x() + scene_rect.width(), scene_pos.y())
+        hline.setLine(scene_pos.x(), scene_rect.y(), scene_pos.x(), scene_rect.y() + scene_rect.height())
+        dot.setRect(scene_pos.x() - 2, scene_pos.y() - 2, 4, 4)
+        for item in self._crosshair_items:
+            item.setVisible(True)
     
     def on_graphics_view_mouse_release(self, event: QMouseEvent):
         """图形视图鼠标释放事件"""

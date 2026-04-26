@@ -517,52 +517,35 @@ class TrainDialog(QDialog):
                        self.flipud_spin]:
             widget.setEnabled(checked)
     
+    def _browse_open_file(self, target_edit: QLineEdit, title_key: str, file_filter: str):
+        """通用文件浏览方法"""
+        current_dir = Path.cwd()
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, tr(title_key), str(current_dir), file_filter
+        )
+        if file_path:
+            target_edit.setText(file_path)
+
+    def _browse_directory(self, target_edit: QLineEdit, title_key: str):
+        """通用目录浏览方法"""
+        current_dir = Path.cwd()
+        dir_path = QFileDialog.getExistingDirectory(
+            self, tr(title_key), str(current_dir)
+        )
+        if dir_path:
+            target_edit.setText(dir_path)
+
     def browse_model_file(self):
-        """浏览模型文件"""
-        current_dir = Path.cwd()
-        model_path, _ = QFileDialog.getOpenFileName(
-            self, tr("browse_model_file_dialog"),
-            str(current_dir),
-            "PyTorch模型文件 (*.pt)"
-        )
-        
-        if model_path:
-            self.model_path_edit.setText(model_path)
-    
+        self._browse_open_file(self.model_path_edit, "browse_model_file_dialog", "PyTorch模型文件 (*.pt)")
+
     def browse_data_yaml(self):
-        """浏览数据集配置文件"""
-        current_dir = Path.cwd()
-        yaml_path, _ = QFileDialog.getOpenFileName(
-            self, tr("browse_data_yaml_dialog"),
-            str(current_dir),
-            "YAML文件 (*.yaml *.yml)"
-        )
-        
-        if yaml_path:
-            self.data_yaml_edit.setText(yaml_path)
-    
+        self._browse_open_file(self.data_yaml_edit, "browse_data_yaml_dialog", "YAML文件 (*.yaml *.yml)")
+
     def browse_output_dir(self):
-        """浏览输出目录"""
-        current_dir = Path.cwd()
-        output_dir = QFileDialog.getExistingDirectory(
-            self, tr("browse_output_dir_dialog"),
-            str(current_dir)
-        )
-        
-        if output_dir:
-            self.output_dir_edit.setText(output_dir)
-    
+        self._browse_directory(self.output_dir_edit, "browse_output_dir_dialog")
+
     def browse_resume_file(self):
-        """浏览检查点文件"""
-        current_dir = Path.cwd()
-        resume_path, _ = QFileDialog.getOpenFileName(
-            self, tr("browse_resume_file_dialog"),
-            str(current_dir),
-            "PyTorch模型文件 (*.pt)"
-        )
-        
-        if resume_path:
-            self.resume_path_edit.setText(resume_path)
+        self._browse_open_file(self.resume_path_edit, "browse_resume_file_dialog", "PyTorch模型文件 (*.pt)")
     
     def save_config(self):
         """保存训练配置到文件"""

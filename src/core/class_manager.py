@@ -57,10 +57,7 @@ class ClassManager:
         """删除类别"""
         if class_id in self._classes:
             del self._classes[class_id]
-            
-            # 如果删除的是最大ID，更新下一个ID
-            if class_id == self._next_class_id - 1:
-                self._update_next_class_id()
+            self._update_next_class_id()
     
     def _update_next_class_id(self):
         """更新下一个可用的类别ID"""
