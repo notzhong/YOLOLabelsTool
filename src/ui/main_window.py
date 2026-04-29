@@ -369,7 +369,10 @@ class MainWindow(QMainWindow):
         self.scale_factor: float = 1.0
         self.temp_rect_item = None  # 临时绘制项
         self.selected_annotations = []  # 存储选中的标注项
-        
+        self._crosshair_items = None    # 十字准线图形项，懒加载
+        self._stats_counts = {"total": 0, "annotated": 0, "unannotated": 0}  # 统计缓存
+        self._last_browse_path = str(Path.cwd())  # 上次浏览路径
+
         # 加载设置
         self.load_settings()
         
@@ -421,7 +424,8 @@ class MainWindow(QMainWindow):
         # 加载QSS样式
         self.load_qss_style()
 
-        self.setWindowIcon(QPixmap('icon.ico'))
+        if Path('icon.ico').exists():
+            self.setWindowIcon(QPixmap('icon.ico'))
     
     def load_qss_style(self):
         """加载QSS样式文件"""
@@ -762,7 +766,13 @@ class MainWindow(QMainWindow):
         iou_layout.addWidget(self.iou_spinbox)
         
         model_info_layout.addLayout(iou_layout)
-        
+
+        # 默认禁用阈值控件（模型加载后由 update_model_info_panel 启用）
+        self.conf_slider.setEnabled(False)
+        self.conf_spinbox.setEnabled(False)
+        self.iou_slider.setEnabled(False)
+        self.iou_spinbox.setEnabled(False)
+
         # 状态指示器
         self.model_status_indicator = QLabel(tr("model_status_unloaded"))
         self.model_status_indicator.setStyleSheet("color: #ff6b6b; font-weight: bold;")
@@ -1110,14 +1120,13 @@ class MainWindow(QMainWindow):
     
     def load_image_folder(self):
         """加载图片文件夹"""
-        # 默认路径改为当前程序的运行路径
-        current_dir = Path.cwd()
         folder_path = QFileDialog.getExistingDirectory(
-            self, tr("select_image_folder_dialog_title"), 
-            str(current_dir)
+            self, tr("select_image_folder_dialog_title"),
+            self._last_browse_path
         )
-        
+
         if folder_path:
+            self._last_browse_path = folder_path
             self.image_manager.load_folder(folder_path)
             self.update_image_list()
             self.update_stats()
@@ -1137,6 +1146,8 @@ class MainWindow(QMainWindow):
             if not pixmap.isNull():
                 # 清除场景
                 self.graphics_scene.clear()
+                # 十字准线已被场景 clear() 删除，重置引用
+                self._crosshair_items = None
                 
                 # 添加图片
                 self.image_item = QGraphicsPixmapItem(pixmap)
@@ -1218,6 +1229,13 @@ class MainWindow(QMainWindow):
                     class_id = annotation.class_id
                     class_counts[class_id] = class_counts.get(class_id, 0) + 1
             
+            # 缓存统计数据供语言切换时使用
+            self._stats_counts = {
+                "total": total_images,
+                "annotated": annotated_count,
+                "unannotated": unannotated_count,
+            }
+
             # 更新标签
             self.stats_total_label.setText(tr("total_images_label") + f" {total_images}")
             self.stats_annotated_label.setText(tr("annotated_images_label") + f" {annotated_count}")
@@ -1621,11 +1639,7 @@ class MainWindow(QMainWindow):
             
             # 清除标注数据
             self.annotation_manager.clear_annotations(self.current_image_path)
-            
-            # 清除缓存，确保下次加载时从文件读取
-            if self.current_image_path in self.annotation_manager._annotations:
-                del self.annotation_manager._annotations[self.current_image_path]
-            
+
             # 更新图片列表显示
             self.update_image_list()
             
@@ -1640,11 +1654,12 @@ class MainWindow(QMainWindow):
             return
 
         output_dir = QFileDialog.getExistingDirectory(
-            self, tr("export_yolo_format_dialog_title"), 
-            str(Path.cwd())
+            self, tr("export_yolo_format_dialog_title"),
+            self._last_browse_path
         )
 
         if output_dir:
+            self._last_browse_path = output_dir
             try:
                 # 允许自定义 data.yaml 文件名
                 default_yaml_path = str(Path(output_dir) / "data.yaml")
@@ -1679,11 +1694,12 @@ class MainWindow(QMainWindow):
             return
         
         output_dir = QFileDialog.getExistingDirectory(
-            self, tr("export_dataset_split_dialog_title"), 
-            str(Path.cwd())
+            self, tr("export_dataset_split_dialog_title"),
+            self._last_browse_path
         )
-        
+
         if output_dir:
+            self._last_browse_path = output_dir
             try:
                 from src.utils.dataset_splitter import DatasetSplitter
                 
@@ -1749,10 +1765,9 @@ class MainWindow(QMainWindow):
     
     def load_classes_from_yaml(self):
         """从YAML文件加载类别"""
-        current_dir = Path.cwd()
         yaml_path, _ = QFileDialog.getOpenFileName(
-            self, tr("load_classes_from_yaml_dialog"), 
-            str(current_dir),
+            self, tr("load_classes_from_yaml_dialog"),
+            self._last_browse_path,
             tr("yaml_file_filter")
         )
         
@@ -1769,11 +1784,10 @@ class MainWindow(QMainWindow):
         if self.class_manager.get_class_count() == 0:
             QMessageBox.warning(self, tr("warning"), tr("no_classes_to_save"))
             return
-        
-        current_dir = Path.cwd()
+
         yaml_path, _ = QFileDialog.getSaveFileName(
-            self, tr("save_classes_to_yaml_dialog"), 
-            str(current_dir),
+            self, tr("save_classes_to_yaml_dialog"),
+            self._last_browse_path,
             tr("yaml_file_filter")
         )
         
@@ -1880,7 +1894,12 @@ class MainWindow(QMainWindow):
             self.graphics_scene.addItem(dot)
             self._crosshair_items = (vline, hline, dot)
         else:
-            # 隐藏旧十字线（可能已移出可见区域）
+            # 检查悬空引用 — 场景 clear() 后 item.scene() 为 None
+            stale = any(item.scene() is None for item in self._crosshair_items)
+            if stale:
+                self._crosshair_items = None
+                return
+            # 隐藏旧十字线
             for item in self._crosshair_items:
                 item.setVisible(False)
 
@@ -1974,10 +1993,9 @@ class MainWindow(QMainWindow):
     
     def load_model(self):
         """加载YOLO模型"""
-        current_dir = Path.cwd()
         model_path, _ = QFileDialog.getOpenFileName(
             self, tr("model_file_selection"),
-            str(current_dir),
+            self._last_browse_path,
             tr("model_file_filter")
         )
         
@@ -2141,9 +2159,11 @@ class MainWindow(QMainWindow):
             return
         
         # 确认批量标注
+        msg = (tr("batch_annotation_confirmation").replace("{image_count}", str(self.image_manager.get_image_count()))
+               + "\n\n⚠ " + tr("batch_overwrite_warning"))
         reply = QMessageBox.question(
             self, tr("confirm_batch_annotation"),
-            tr("batch_annotation_confirmation").replace("{image_count}", str(self.image_manager.get_image_count())),
+            msg,
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
@@ -2577,30 +2597,16 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'model_name_label') and not self.model_manager.is_model_loaded():
             self.model_name_label.setText(tr("model_not_loaded"))
         
-        # 更新统计信息标签
-        if hasattr(self, 'stats_total_label') and hasattr(self, 'stats_annotated_label') and hasattr(self, 'stats_unannotated_label'):
-            # 获取当前值
-            total_text = self.stats_total_label.text()
-            annotated_text = self.stats_annotated_label.text()
-            unannotated_text = self.stats_unannotated_label.text()
-            
-            # 提取数字
-            import re
-            total_match = re.search(r'\d+', total_text)
-            annotated_match = re.search(r'\d+', annotated_text)
-            unannotated_match = re.search(r'\d+', unannotated_text)
-            
-            if total_match:
-                total_num = total_match.group()
-                self.stats_total_label.setText(f"{tr('total_images')} {total_num}")
-            
-            if annotated_match:
-                annotated_num = annotated_match.group()
-                self.stats_annotated_label.setText(f"{tr('annotated_images')} {annotated_num}")
-            
-            if unannotated_match:
-                unannotated_num = unannotated_match.group()
-                self.stats_unannotated_label.setText(f"{tr('unannotated_images')} {unannotated_num}")
+        # 更新统计信息标签（使用缓存避免脆弱的正则解析）
+        if hasattr(self, '_stats_counts') and self._stats_counts["total"] != 0:
+            c = self._stats_counts
+            self.stats_total_label.setText(f"{tr('total_images_label')} {c['total']}")
+            self.stats_annotated_label.setText(f"{tr('annotated_images_label')} {c['annotated']}")
+            self.stats_unannotated_label.setText(f"{tr('unannotated_images_label')} {c['unannotated']}")
+        else:
+            self.stats_total_label.setText(tr("total_images_zero"))
+            self.stats_annotated_label.setText(tr("annotated_images_zero"))
+            self.stats_unannotated_label.setText(tr("unannotated_images_zero"))
         
         # 更新表格表头
         if hasattr(self, 'stats_table'):

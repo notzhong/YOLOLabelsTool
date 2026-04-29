@@ -3,6 +3,7 @@ YOLO格式导出器
 """
 
 import os
+import random
 import shutil
 from pathlib import Path
 from typing import List, Tuple, Dict, Any
@@ -136,23 +137,27 @@ class YOLOExporter:
                 sub_dir_path.mkdir(exist_ok=True)
     
     def _split_dataset(
-        self, 
-        image_paths: List[str], 
+        self,
+        image_paths: List[str],
         split_ratios: Tuple[float, float, float]
     ) -> Tuple[List[str], List[str], List[str]]:
-        """划分数据集"""
+        """划分数据集（先打乱再划分）"""
         total_count = len(image_paths)
         train_ratio, val_ratio, test_ratio = split_ratios
-        
+
+        # 打乱顺序避免文件系统顺序引入偏差
+        shuffled_paths = image_paths.copy()
+        random.shuffle(shuffled_paths)
+
         # 计算各集合数量
         train_count = int(total_count * train_ratio)
         val_count = int(total_count * val_ratio)
-        
+
         # 划分数据集
-        train_paths = image_paths[:train_count]
-        val_paths = image_paths[train_count:train_count + val_count]
-        test_paths = image_paths[train_count + val_count:]
-        
+        train_paths = shuffled_paths[:train_count]
+        val_paths = shuffled_paths[train_count:train_count + val_count]
+        test_paths = shuffled_paths[train_count + val_count:]
+
         return train_paths, val_paths, test_paths
     
     def _export_subset(
