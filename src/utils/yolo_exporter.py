@@ -12,14 +12,14 @@ import yaml
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..core.annotation import AnnotationManager
-    from ..core.image_manager import ImageManager
-    from ..core.class_manager import ClassManager
+    from src.core.annotation import AnnotationManager
+    from src.core.image_manager import ImageManager
+    from src.core.class_manager import ClassManager
 else:
-    from ..core.image_manager import ImageManager
-    from ..core.class_manager import ClassManager
+    from src.core.image_manager import ImageManager
+    from src.core.class_manager import ClassManager
     # AnnotationManager will be imported locally where needed
-from ..utils.logger import get_logger_simple
+from src.utils.logger import get_logger_simple
 
 
 def annotation_to_yolo_lines(annotations: List[Any], image_width: int, image_height: int) -> List[str]:
@@ -141,24 +141,9 @@ class YOLOExporter:
         image_paths: List[str],
         split_ratios: Tuple[float, float, float]
     ) -> Tuple[List[str], List[str], List[str]]:
-        """划分数据集（先打乱再划分）"""
-        total_count = len(image_paths)
-        train_ratio, val_ratio, test_ratio = split_ratios
-
-        # 打乱顺序避免文件系统顺序引入偏差
-        shuffled_paths = image_paths.copy()
-        random.shuffle(shuffled_paths)
-
-        # 计算各集合数量
-        train_count = int(total_count * train_ratio)
-        val_count = int(total_count * val_ratio)
-
-        # 划分数据集
-        train_paths = shuffled_paths[:train_count]
-        val_paths = shuffled_paths[train_count:train_count + val_count]
-        test_paths = shuffled_paths[train_count + val_count:]
-
-        return train_paths, val_paths, test_paths
+        """划分数据集（委托给 DatasetSplitter.random_split）"""
+        from src.utils.dataset_splitter import random_split
+        return random_split(image_paths, split_ratios)
     
     def _export_subset(
         self,
@@ -170,62 +155,66 @@ class YOLOExporter:
         output_dir: str,
         copy_images: bool
     ):
-        """导出子集"""
+        """导出子集（委托给 _export_single_subset_image）"""
         output_path = Path(output_dir)
-        
-        for image_path in image_paths:
-            try:
-                # 获取图片信息
-                image_info = image_manager.get_image_info(image_path)
-                if image_info is None:
-                    self.logger.warning(f"无法获取图片信息: {image_path}")
-                    continue
-                
-                image_width, image_height = image_info
-                
-                # 获取标注
-                annotations = annotation_manager.get_annotations(image_path)
-                
-                # 导出标注文件（YOLO格式）
-                self._export_yolo_labels(
-                    image_path, annotations, image_width, image_height,
-                    output_path / "labels" / subset_name
-                )
-                
-                # 复制图片
-                if copy_images:
-                    self._copy_image(
-                        image_path, output_path / "images" / subset_name
-                    )
-                    
-            except Exception as e:
-                self.logger.error(f"导出图片失败 {image_path}: {e}")
-    
-    def _export_yolo_labels(
-        self,
-        image_path: str,
-        annotations: List,
-        image_width: int,
-        image_height: int,
-        output_labels_dir: Path
-    ):
-        """导出YOLO格式标注文件"""
-        image_name = Path(image_path).stem
-        output_file = output_labels_dir / f"{image_name}.txt"
+        images_dir = output_path / "images" / subset_name
+        labels_dir = output_path / "labels" / subset_name
 
-        lines = annotation_to_yolo_lines(annotations, image_width, image_height)
-        with open(output_file, 'w', encoding='utf-8') as f:
-            f.write("\n".join(lines) + ("\n" if lines else ""))
+        for image_path in image_paths:
+            if copy_images:
+                self._export_single_subset_image(
+                    image_path, image_manager, annotation_manager,
+                    images_dir, labels_dir,
+                )
+            else:
+                self._export_single_subset_image(
+                    image_path, image_manager, annotation_manager,
+                    None, labels_dir,
+                )
     
     def _copy_image(self, image_path: str, output_images_dir: Path):
         """复制图片到输出目录"""
         image_name = Path(image_path).name
         output_file = output_images_dir / image_name
-        
+
         try:
             shutil.copy2(image_path, output_file)
         except Exception as e:
             self.logger.error(f"复制图片失败 {image_path}: {e}")
+
+    def _export_single_subset_image(
+        self,
+        image_path: str,
+        image_manager,
+        annotation_manager,
+        output_images_dir: Path,
+        output_labels_dir: Path,
+    ):
+        """导出单张图片及其 YOLO 标注到指定子集目录（供 DatasetSplitter 和内部使用）"""
+        try:
+            image_info = image_manager.get_image_info(image_path)
+            if image_info is None:
+                self.logger.warning(f"无法获取图片信息: {image_path}")
+                return
+            image_width, image_height = image_info
+
+            if output_images_dir is not None:
+                shutil.copy2(image_path, output_images_dir / Path(image_path).name)
+
+            annotations = annotation_manager.get_annotations(image_path)
+            if annotations:
+                self._write_yolo_file(
+                    annotations, image_width, image_height,
+                    output_labels_dir / f"{Path(image_path).stem}.txt"
+                )
+        except Exception as e:
+            self.logger.error(f"导出失败 {image_path}: {e}")
+
+    def _write_yolo_file(self, annotations, image_width, image_height, output_file: Path):
+        """写入 YOLO 标注文件"""
+        lines = annotation_to_yolo_lines(annotations, image_width, image_height)
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write("\n".join(lines) + ("\n" if lines else ""))
     
     def _export_split_files(
         self,
@@ -272,11 +261,8 @@ class YOLOExporter:
                 f.write(rel_path + "\n")
 
     def _build_names_config(self, class_manager: ClassManager):
-        """构建 names 字段：ID 连续用列表，否则用字典"""
-        class_ids = sorted(class_manager.get_classes().keys())
-        if class_ids and class_ids == list(range(max(class_ids) + 1)):
-            return [class_manager.get_class_name(i) for i in class_ids]
-        return {i: class_manager.get_class_name(i) for i in class_ids}
+        """构建 names 字段（委托给 ClassManager）"""
+        return class_manager.build_names_config()
 
     def _export_yaml_config(self, class_manager: ClassManager, output_dir: str, yaml_filename: str = "data.yaml"):
         """导出 data.yaml 配置文件"""

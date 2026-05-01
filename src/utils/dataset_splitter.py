@@ -1,22 +1,48 @@
 """
-数据集划分器
+数据集划分器 — 划分逻辑在此，文件导出委托给 YOLOExporter
 """
 
 import random
 from pathlib import Path
-from typing import List, Tuple, Dict
-import shutil
+from typing import List, Tuple
 
-from ..utils.logger import get_logger_simple
-from ..utils.yolo_exporter import annotation_to_yolo_lines
+from src.utils.logger import get_logger_simple
+from src.utils.yolo_exporter import YOLOExporter
+
+
+def random_split(
+    image_paths: List[str],
+    split_ratios: Tuple[float, float, float],
+) -> Tuple[List[str], List[str], List[str]]:
+    """打乱并划分数据集为 train/val/test。
+
+    先随机打乱再按比例连续切分，消除文件系统顺序带来的划分偏差。
+    """
+    if abs(sum(split_ratios) - 1.0) > 0.01:
+        raise ValueError(f"分割比例之和应为1.0，当前为{sum(split_ratios)}")
+
+    total = len(image_paths)
+    train_r, val_r, _ = split_ratios
+
+    shuffled = image_paths.copy()
+    random.shuffle(shuffled)
+
+    train_end = int(total * train_r)
+    val_end = train_end + int(total * val_r)
+
+    return (
+        shuffled[:train_end],
+        shuffled[train_end:val_end],
+        shuffled[val_end:],
+    )
 
 
 class DatasetSplitter:
-    """数据集划分器"""
-    
+    """数据集划分器 — 划分逻辑在此，文件导出委托给 YOLOExporter"""
+
     def __init__(self):
         self.logger = get_logger_simple(__name__)
-    
+
     def split_and_export(
         self,
         image_manager,
@@ -28,7 +54,7 @@ class DatasetSplitter:
     ):
         """
         划分并导出数据集
-        
+
         Args:
             image_manager: 图片管理器
             annotation_manager: 标注管理器
@@ -37,77 +63,38 @@ class DatasetSplitter:
             copy_images: 是否复制图片
             random_seed: 随机种子
         """
-        # 设置随机种子
-        random.seed(random_seed)
-        
-        # 验证分割比例
-        if abs(sum(split_ratios) - 1.0) > 0.01:
-            raise ValueError(f"分割比例之和应为1.0，当前为{sum(split_ratios)}")
-        
         # 获取所有图片路径
         image_paths = image_manager.get_all_image_paths()
         if not image_paths:
             raise ValueError("没有图片可划分")
-        
-        # 打乱顺序
-        shuffled_paths = image_paths.copy()
-        random.shuffle(shuffled_paths)
-        
-        # 划分数据集
-        train_paths, val_paths, test_paths = self._split_paths(
-            shuffled_paths, split_ratios
-        )
-        
+
+        # 打乱并划分
+        random.seed(random_seed)
+        train_paths, val_paths, test_paths = random_split(image_paths, split_ratios)
+
         # 创建输出目录
         output_path = Path(output_dir)
         self._create_split_dirs(output_path)
-        
-        # 导出划分信息
+
+        # 导出划分信息（绝对路径 + 统计）
         self._export_split_info(
             output_path, train_paths, val_paths, test_paths
         )
-        
-        # 复制图片和标注（如果需要）
+
+        # 委托给 YOLOExporter 处理图片复制 + YOLO 标注导出
         if copy_images:
-            self._copy_split_data(
-                output_path, train_paths, val_paths, test_paths,
-                image_manager, annotation_manager
-            )
-    
-    def _split_paths(
-        self, 
-        paths: List[str], 
-        split_ratios: Tuple[float, float, float]
-    ) -> Tuple[List[str], List[str], List[str]]:
-        """划分路径列表"""
-        total_count = len(paths)
-        train_ratio, val_ratio, test_ratio = split_ratios
-        
-        # 计算各集合数量
-        train_count = int(total_count * train_ratio)
-        val_count = int(total_count * val_ratio)
-        
-        # 划分数据集
-        train_paths = paths[:train_count]
-        val_paths = paths[train_count:train_count + val_count]
-        test_paths = paths[train_count + val_count:]
-        
-        return train_paths, val_paths, test_paths
-    
-    def _create_split_dirs(self, output_path: Path):
-        """创建划分目录"""
-        # 创建主目录
-        output_path.mkdir(parents=True, exist_ok=True)
-        
-        # 创建子目录
-        for subset in ["train", "val", "test"]:
-            # 创建图片目录
-            images_dir = output_path / "images" / subset
-            images_dir.mkdir(parents=True, exist_ok=True)
-            
-            # 创建标注目录
-            labels_dir = output_path / "labels" / subset
-            labels_dir.mkdir(parents=True, exist_ok=True)
+            exporter = YOLOExporter()
+            for subset_name, paths in [
+                ("train", train_paths),
+                ("val", val_paths),
+                ("test", test_paths),
+            ]:
+                for image_path in paths:
+                    exporter._export_single_subset_image(
+                        image_path, image_manager, annotation_manager,
+                        output_path / "images" / subset_name,
+                        output_path / "labels" / subset_name,
+                    )
     
     def _export_split_info(
         self,
@@ -177,103 +164,13 @@ class DatasetSplitter:
                 else:
                     f.write(f"{key}: {value}\n")
     
-    def _copy_split_data(
-        self,
-        output_path: Path,
-        train_paths: List[str],
-        val_paths: List[str],
-        test_paths: List[str],
-        image_manager,
-        annotation_manager
-    ):
-        """复制划分数据"""
-        # 复制训练集
-        self._copy_subset_data(
-            output_path, "train", train_paths,
-            image_manager, annotation_manager
-        )
-        
-        # 复制验证集
-        self._copy_subset_data(
-            output_path, "val", val_paths,
-            image_manager, annotation_manager
-        )
-        
-        # 复制测试集
-        self._copy_subset_data(
-            output_path, "test", test_paths,
-            image_manager, annotation_manager
-        )
-    
-    def _copy_subset_data(
-        self,
-        output_path: Path,
-        subset_name: str,
-        paths: List[str],
-        image_manager,
-        annotation_manager
-    ):
-        """复制子集数据"""
-        images_dir = output_path / "images" / subset_name
-        labels_dir = output_path / "labels" / subset_name
-        
-        for image_path in paths:
-            try:
-                # 复制图片
-                image_name = Path(image_path).name
-                dest_image = images_dir / image_name
-                shutil.copy2(image_path, dest_image)
-                
-                # 转换并导出标注（如果存在）
-                annotation_name = Path(image_path).stem + ".txt"
-                dest_annotation = labels_dir / annotation_name
-                self._export_yolo_labels(
-                    image_path, dest_annotation, image_manager, annotation_manager
-                )
-                    
-            except Exception as e:
-                self.logger.error(f"复制数据失败 {image_path}: {e}")
-    
-    def _export_yolo_labels(
-        self,
-        image_path: str,
-        output_file: Path,
-        image_manager,
-        annotation_manager
-    ):
-        """导出YOLO格式标注文件"""
-        # 获取标注
-        annotations = annotation_manager.get_annotations(image_path)
-        if not annotations:
-            # 没有标注，创建空文件或跳过
-            try:
-                output_file.touch()
-            except:
-                pass
-            return
-        
-        # 获取图片尺寸
-        image_info = image_manager.get_image_info(image_path)
-        if image_info is None:
-            try:
-                # 尝试使用PIL获取图片尺寸
-                from PIL import Image
-                with Image.open(image_path) as img:
-                    image_width, image_height = img.size
-            except Exception as e:
-                self.logger.error(f"获取图片尺寸失败 {image_path}: {e}")
-                return
-        else:
-            image_width, image_height = image_info
-        
-        # 写入YOLO格式
-        try:
-            lines = annotation_to_yolo_lines(annotations, image_width, image_height)
-            with open(output_file, 'w', encoding='utf-8') as f:
-                f.write("\n".join(lines) + ("\n" if lines else ""))
-        except Exception as e:
-            self.logger.error(f"写入YOLO标注文件失败 {output_file}: {e}")
-    
+    def _create_split_dirs(self, output_path: Path):
+        """创建划分目录"""
+        output_path.mkdir(parents=True, exist_ok=True)
+        for subset in ["train", "val", "test"]:
+            (output_path / "images" / subset).mkdir(parents=True, exist_ok=True)
+            (output_path / "labels" / subset).mkdir(parents=True, exist_ok=True)
+
     def create_cross_validation_splits(
         self,
         image_paths: List[str],

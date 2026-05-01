@@ -11,25 +11,23 @@ import cv2
 import numpy as np
 
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QSplitter, QListWidget, QLabel, QPushButton,
     QFileDialog, QMessageBox, QToolBar, QStatusBar,
-    QGraphicsView, QGraphicsScene, QGraphicsPixmapItem,
-    QGraphicsRectItem, QGraphicsTextItem, QGraphicsLineItem, QGraphicsEllipseItem,
     QMenuBar, QMenu, QDockWidget, QFrame, QSizePolicy,
-    QScrollArea, QGroupBox, QFormLayout, QLineEdit,
-    QSpinBox, QDoubleSpinBox, QComboBox, QCheckBox,
-    QProgressDialog, QApplication, QSlider, QTableWidget, QTableWidgetItem, QHeaderView
+    QScrollArea, QGroupBox, QComboBox, QCheckBox,
+    QProgressDialog, QApplication
 )
 from PySide6.QtCore import (
-    Qt, QSize, QPoint, QPointF, QRect, QRectF, QTimer,
-    Signal, Slot, QEvent
+    Qt,
 )
 from PySide6.QtGui import (
-    QPixmap, QImage, QPainter, QPen, QBrush, QColor,
-    QAction, QKeySequence, QFont, QIcon, QCursor,
-    QMouseEvent, QWheelEvent, QKeyEvent, QResizeEvent,
+    QPixmap, QColor,
+    QAction, QKeySequence, QIcon, QShortcut,
 )
+
+from src.ui.annotation_canvas import AnnotationCanvas
+from src.ui.panels import StatsPanel, ModelInfoPanel
 
 from src.core.annotation import Annotation, AnnotationManager
 from src.core.image_manager import ImageManager
@@ -39,301 +37,6 @@ from src.utils.yolo_exporter import YOLOExporter
 
 from src.utils.logger import get_logger_simple
 from src.utils.i18n import TranslationManager, tr, T
-
-
-class AnnotationRectItem(QGraphicsRectItem):
-    """标注框图形项，支持选中状态和拖拽编辑"""
-    
-    def __init__(self, x, y, width, height, annotation, color, parent=None):
-        super().__init__(x, y, width, height, parent)
-        self.annotation = annotation
-        self.color = color
-        self.logger = get_logger_simple(__name__)
-        
-        # 拖拽状态
-        self.is_selected = False
-        self.is_dragging = False
-        self.is_resizing = False
-        self.drag_start_pos = QPointF()
-        self.original_rect = QRectF()
-        self.resize_handle = None  # 调整大小的控制点位置：None, 'top-left', 'top-right', 'bottom-left', 'bottom-right'
-        
-        # 控制点大小
-        self.handle_size = 8
-        
-        # 设置可拖拽和可选中
-        self.setFlag(QGraphicsRectItem.ItemIsMovable, True)
-        self.setFlag(QGraphicsRectItem.ItemIsSelectable, True)
-        self.setFlag(QGraphicsRectItem.ItemSendsGeometryChanges, True)
-        self.setAcceptHoverEvents(True)
-        
-        # 右键菜单
-        self.context_menu = None
-        
-        self.update_appearance()
-    
-    def hoverMoveEvent(self, event):
-        """鼠标悬停事件，显示调整控制点"""
-        if self.is_selected:
-            pos = event.pos()
-            rect = self.rect()
-            
-            # 检查鼠标是否在控制点附近
-            handle_positions = {
-                'top-left': QPointF(rect.left(), rect.top()),
-                'top-right': QPointF(rect.right(), rect.top()),
-                'bottom-left': QPointF(rect.left(), rect.bottom()),
-                'bottom-right': QPointF(rect.right(), rect.bottom())
-            }
-            
-            for handle_name, handle_pos in handle_positions.items():
-                if (pos - handle_pos).manhattanLength() < self.handle_size * 2:
-                    # 根据控制点位置设置鼠标形状
-                    if handle_name in ['top-left', 'bottom-right']:
-                        self.setCursor(Qt.SizeFDiagCursor)
-                    elif handle_name in ['top-right', 'bottom-left']:
-                        self.setCursor(Qt.SizeBDiagCursor)
-                    self.resize_handle = handle_name
-                    return
-            
-            # 如果不在控制点附近，检查是否在边框附近
-            if (abs(pos.x() - rect.left()) < 5 or abs(pos.x() - rect.right()) < 5 or
-                abs(pos.y() - rect.top()) < 5 or abs(pos.y() - rect.bottom()) < 5):
-                self.setCursor(Qt.SizeAllCursor)
-                self.resize_handle = 'edge'
-            else:
-                self.setCursor(Qt.ArrowCursor)
-                self.resize_handle = None
-        super().hoverMoveEvent(event)
-    
-    def mousePressEvent(self, event):
-        """鼠标点击事件"""
-        if event.button() == Qt.LeftButton:
-            # 取消其他所有标注框的选中状态
-            self.deselect_all_other_annotations()
-            
-            if self.resize_handle:
-                # 开始调整大小
-                self.is_resizing = True
-                self.drag_start_pos = event.pos()
-                self.original_rect = self.rect()
-            else:
-                # 开始拖拽
-                self.is_dragging = True
-                self.drag_start_pos = event.pos()
-                self.original_rect = self.rect()
-            
-            # 设置选中状态
-            if not self.is_selected:
-                self.set_selected(True)
-            event.accept()
-        
-        elif event.button() == Qt.RightButton:
-            # 显示右键菜单
-            self.show_context_menu(event.screenPos())
-            event.accept()
-        else:
-            super().mousePressEvent(event)
-    
-    def deselect_all_other_annotations(self):
-        """取消所有其他标注框的选中状态"""
-        scene = self.scene()
-        if scene:
-            for item in scene.items():
-                if (hasattr(item, 'is_annotation_item') and 
-                    item != self and 
-                    hasattr(item, 'is_selected') and 
-                    item.is_selected):
-                    item.set_selected(False)
-    
-    def mouseMoveEvent(self, event):
-        """鼠标移动事件"""
-        if self.is_dragging:
-            # 计算移动距离
-            delta = event.pos() - self.drag_start_pos
-            new_rect = self.original_rect.translated(delta)
-            
-            # 更新矩形位置
-            self.setRect(new_rect)
-            
-            # 更新标注数据
-            self.annotation.x = new_rect.x()
-            self.annotation.y = new_rect.y()
-            
-            event.accept()
-        
-        elif self.is_resizing:
-            # 调整大小
-            delta = event.pos() - self.drag_start_pos
-            new_rect = QRectF(self.original_rect)
-            
-            if self.resize_handle == 'top-left':
-                new_rect.setTopLeft(self.original_rect.topLeft() + delta)
-            elif self.resize_handle == 'top-right':
-                new_rect.setTopRight(self.original_rect.topRight() + delta)
-            elif self.resize_handle == 'bottom-left':
-                new_rect.setBottomLeft(self.original_rect.bottomLeft() + delta)
-            elif self.resize_handle == 'bottom-right':
-                new_rect.setBottomRight(self.original_rect.bottomRight() + delta)
-            elif self.resize_handle == 'edge':
-                # 如果是边框拖拽，调整整个大小（保持中心点不变）
-                new_rect = self.original_rect.adjusted(-delta.x()/2, -delta.y()/2, delta.x()/2, delta.y()/2)
-            
-            # 确保矩形大小合理
-            if new_rect.width() > 10 and new_rect.height() > 10:
-                self.setRect(new_rect)
-                
-                # 更新标注数据
-                self.annotation.x = new_rect.x()
-                self.annotation.y = new_rect.y()
-                self.annotation.width = new_rect.width()
-                self.annotation.height = new_rect.height()
-            
-            event.accept()
-        else:
-            super().mouseMoveEvent(event)
-    
-    def mouseReleaseEvent(self, event):
-        """鼠标释放事件"""
-        if event.button() == Qt.LeftButton:
-            if self.is_dragging or self.is_resizing:
-                # 保存标注变更到文件
-                if self.scene() and hasattr(self.scene().parent(), 'save_annotations'):
-                    self.scene().parent().save_annotations()
-                
-                self.is_dragging = False
-                self.is_resizing = False
-                event.accept()
-            else:
-                super().mouseReleaseEvent(event)
-        else:
-            super().mouseReleaseEvent(event)
-    
-    def set_selected(self, selected: bool):
-        """设置选中状态"""
-        self.is_selected = selected
-        self.update_appearance()
-    
-    def update_appearance(self):
-        """更新外观"""
-        if self.is_selected:
-            # 选中时使用更粗的边框和实心填充
-            self.setPen(QPen(QColor(255, 255, 0), 3))  # 黄色边框
-            self.setBrush(QBrush(QColor(255, 255, 0, 30)))  # 半透明黄色填充
-            
-            # 绘制控制点
-            self.paint_handles()
-        else:
-            # 非选中状态，使用类别颜色
-            self.setPen(QPen(self.color, 2))
-            self.setBrush(QBrush(self.color, Qt.Dense4Pattern))
-            self.resize_handle = None
-    
-    def paint_handles(self):
-        """绘制调整大小的控制点"""
-        # 控制点会在paint方法中绘制
-        self.update()
-    
-    def paint(self, painter, option, widget=None):
-        """自定义绘制"""
-        super().paint(painter, option, widget)
-        
-        # 如果被选中，绘制控制点
-        if self.is_selected:
-            rect = self.rect()
-            handle_size = self.handle_size
-            
-            # 绘制四个角的控制点
-            painter.setBrush(QBrush(QColor(255, 255, 255)))
-            painter.setPen(QPen(QColor(0, 0, 0), 1))
-            
-            corners = [
-                rect.topLeft(),
-                rect.topRight(),
-                rect.bottomLeft(),
-                rect.bottomRight()
-            ]
-            
-            for corner in corners:
-                painter.drawRect(
-                    corner.x() - handle_size/2,
-                    corner.y() - handle_size/2,
-                    handle_size,
-                    handle_size
-                )
-    
-    def show_context_menu(self, screen_pos):
-        """显示右键菜单"""
-        if not self.context_menu:
-            self.context_menu = QMenu()
-            
-            # 修改类别子菜单
-            self.class_menu = QMenu(tr("modify_class"), self.context_menu)
-            self.context_menu.addMenu(self.class_menu)
-            
-            # 删除标注
-            delete_action = QAction(tr("delete_annotation"), self.context_menu)
-            delete_action.triggered.connect(self.delete_annotation)
-            self.context_menu.addAction(delete_action)
-        
-        # 更新类别子菜单
-        self.class_menu.clear()
-        
-        # 获取当前窗口实例以访问类别管理器
-        scene = self.scene()
-        if scene and hasattr(scene.parent(), 'class_manager'):
-            class_manager = scene.parent().class_manager
-            classes = class_manager.get_classes()
-            
-            for class_id, class_info in sorted(classes.items()):
-                class_name = class_info["name"]
-                color = class_info["color"]
-                
-                action = QAction(class_name, self.class_menu)
-                action.setData(class_id)  # 存储类别ID
-                action.triggered.connect(lambda checked, cid=class_id: self.change_class(cid))
-                
-                # 设置图标颜色
-                pixmap = QPixmap(16, 16)
-                pixmap.fill(QColor(*color))
-                action.setIcon(QIcon(pixmap))
-                
-                self.class_menu.addAction(action)
-        
-        # 显示菜单
-        self.context_menu.exec(screen_pos)
-    
-    def change_class(self, class_id):
-        """修改标注类别"""
-        self.annotation.class_id = class_id
-        
-        # 更新颜色
-        scene = self.scene()
-        if scene and hasattr(scene.parent(), 'class_manager'):
-            class_manager = scene.parent().class_manager
-            class_info = class_manager.get_class(class_id)
-            if class_info:
-                self.color = QColor(*class_info["color"])
-                self.update_appearance()
-        
-        # 保存变更
-        if scene and hasattr(scene.parent(), 'save_annotations'):
-            scene.parent().save_annotations()
-    
-    def delete_annotation(self):
-        """删除标注"""
-        scene = self.scene()
-        if scene and hasattr(scene.parent(), 'delete_selected_annotation'):
-            # 确保当前项被选中
-            if not self.is_selected:
-                self.set_selected(True)
-            # 调用主窗口的删除方法
-            try:
-                scene.parent().delete_selected_annotation()
-            except Exception as e:
-                import traceback
-                self.logger.error(f"删除标注失败: {e}")
-                self.logger.error(traceback.format_exc())
 
 
 class MainWindow(QMainWindow):
@@ -362,15 +65,8 @@ class MainWindow(QMainWindow):
         # 当前状态
         self.current_image_path: Optional[str] = None
         self.current_image_index: int = 0
-        self.is_drawing: bool = False
-        self.drawing_start_point: Optional[QPoint] = None
-        self.drawing_end_point: Optional[QPoint] = None
         self.selected_class_id: int = 0
-        self.scale_factor: float = 1.0
-        self.temp_rect_item = None  # 临时绘制项
-        self.selected_annotations = []  # 存储选中的标注项
-        self._crosshair_items = None    # 十字准线图形项，懒加载
-        self._stats_counts = {"total": 0, "annotated": 0, "unannotated": 0}  # 统计缓存
+        # 统计缓存移至 StatsPanel._stats_counts
         self._last_browse_path = str(Path.cwd())  # 上次浏览路径
 
         # 加载设置
@@ -378,14 +74,14 @@ class MainWindow(QMainWindow):
         
         # 初始化UI
         self.init_ui()
+        self.canvas.selected_class_id = self.selected_class_id  # 同步初始类别
         self.init_actions()
         self.init_menus()
         self.init_toolbar()
         self.init_statusbar()
         
-        # 更新类别列表（如果已从配置文件加载）
-        if hasattr(self, 'class_list_widget'):
-            self.update_class_list()
+        # 更新类别列表
+        self.update_class_list()
         
         # 设置窗口属性
         self.setWindowTitle(tr("yolo_label_tool"))
@@ -426,7 +122,53 @@ class MainWindow(QMainWindow):
 
         if Path('icon.ico').exists():
             self.setWindowIcon(QPixmap('icon.ico'))
-    
+
+        # 设置键盘快捷键
+        self._setup_shortcuts()
+
+    def _setup_shortcuts(self):
+        """设置键盘快捷键"""
+        # ←/→ 翻图
+        QShortcut(QKeySequence(Qt.Key_Left), self, self.prev_image)
+        QShortcut(QKeySequence(Qt.Key_Right), self, self.next_image)
+        # Tab/Shift+Tab 循环选择类别
+        QShortcut(QKeySequence(Qt.Key_Tab), self, self._select_next_class)
+        QShortcut(QKeySequence(Qt.SHIFT | Qt.Key_Backtab), self, self._select_prev_class)
+
+    def _select_next_class(self):
+        """选择下一个类别"""
+        count = self.class_list_widget.count()
+        if count == 0:
+            return
+        current_row = self.class_list_widget.currentRow()
+        next_row = (current_row + 1) % count
+        self.class_list_widget.setCurrentRow(next_row)
+        item = self.class_list_widget.item(next_row)
+        if item:
+            self.on_class_item_clicked(item)
+            self.update_status(
+                tr("selected_class").replace(
+                    "{class_name}", self.class_manager.get_class_name(self.selected_class_id)
+                )
+            )
+
+    def _select_prev_class(self):
+        """选择上一个类别"""
+        count = self.class_list_widget.count()
+        if count == 0:
+            return
+        current_row = self.class_list_widget.currentRow()
+        prev_row = (current_row - 1) % count
+        self.class_list_widget.setCurrentRow(prev_row)
+        item = self.class_list_widget.item(prev_row)
+        if item:
+            self.on_class_item_clicked(item)
+            self.update_status(
+                tr("selected_class").replace(
+                    "{class_name}", self.class_manager.get_class_name(self.selected_class_id)
+                )
+            )
+
     def load_qss_style(self):
         """加载QSS样式文件"""
         self.logger.info(f"加载QSS样式，当前主题: {self.current_theme}")
@@ -563,19 +305,14 @@ class MainWindow(QMainWindow):
         
         layout.addLayout(tool_layout)
         
-        # 图片显示区域
-        self.graphics_view = QGraphicsView()
-        self.graphics_view.setRenderHint(QPainter.Antialiasing)
-        self.graphics_view.setRenderHint(QPainter.SmoothPixmapTransform)
-        self.graphics_view.setDragMode(QGraphicsView.ScrollHandDrag)
-        
-        self.graphics_scene = QGraphicsScene(self)
-        self.graphics_view.setScene(self.graphics_scene)
-        
-        # 设置鼠标事件
-        self.graphics_view.viewport().installEventFilter(self)
-        
-        layout.addWidget(self.graphics_view)
+        # 图片显示区域 — 用 AnnotationCanvas 替换原 QGraphicsView
+        self.canvas = AnnotationCanvas()
+        self.canvas.set_class_manager(self.class_manager)
+        self.canvas.annotation_created.connect(self._on_canvas_annotation_created)
+        self.canvas.annotation_changed.connect(self.save_annotations)
+        self.canvas.annotation_deleted.connect(self._on_canvas_annotation_deleted)
+
+        layout.addWidget(self.canvas)
         
         # 状态信息
         self.image_info_label = QLabel(tr("no_image_loaded"))
@@ -664,143 +401,21 @@ class MainWindow(QMainWindow):
         splitter.addWidget(self.export_group)
         
         # 标注统计面板
-        self.stats_group = QGroupBox(tr("annotation_stats"))
-        stats_layout = QVBoxLayout(self.stats_group)
-        
-        # 统计信息标签
-        self.stats_total_label = QLabel(tr("total_images_zero"))
-        stats_layout.addWidget(self.stats_total_label)
-        
-        self.stats_annotated_label = QLabel(tr("annotated_images_zero"))
-        stats_layout.addWidget(self.stats_annotated_label)
-        
-        self.stats_unannotated_label = QLabel(tr("unannotated_images_zero"))
-        stats_layout.addWidget(self.stats_unannotated_label)
-        
-        # 类别统计表格（使用QTableWidget）
-        self.stats_table = QTableWidget()
-        self.stats_table.setColumnCount(3)
-        self.stats_table.setHorizontalHeaderLabels([tr("class_id"), tr("class_name"), tr("annotation_count")])
-        self.stats_table.horizontalHeader().setStretchLastSection(True)
-        self.stats_table.setMaximumHeight(200)
-        stats_layout.addWidget(self.stats_table)
-        
-        # 刷新统计按钮
-        self.btn_refresh_stats = QPushButton(tr("refresh_stats"))
-        self.btn_refresh_stats.clicked.connect(self.update_statistics_panel)
-        stats_layout.addWidget(self.btn_refresh_stats)
-        
-        stats_layout.addStretch()
-        
-        splitter.addWidget(self.stats_group)
+        self.stats_panel = StatsPanel()
+        self.stats_panel.refresh_requested.connect(self._on_stats_refresh)
+        splitter.addWidget(self.stats_panel)
         
         # 模型信息面板（默认隐藏）
-        self.model_info_group = QGroupBox(tr("model_info_panel"))
-        self.model_info_group.setVisible(False)  # 默认隐藏
+        self.model_info_panel = ModelInfoPanel()
+        self.model_info_panel.setVisible(False)
+        self.model_info_panel.confidence_changed.connect(self._on_panel_conf_changed)
+        self.model_info_panel.iou_changed.connect(self._on_panel_iou_changed)
+        self.model_info_panel.unload_requested.connect(self.unload_model)
+        self.model_info_panel.train_requested.connect(self.train_model)
+        self.model_info_panel.refresh_requested.connect(self._on_model_info_refresh)
         
-        model_info_layout = QVBoxLayout(self.model_info_group)
-        
-        # 模型名称标签
-        self.model_name_label = QLabel(tr("model_not_loaded"))
-        model_info_layout.addWidget(self.model_name_label)
-        
-        # 模型路径
-        self.model_path_label = QLabel(tr("model_path_none"))
-        model_path_font = QFont()
-        model_path_font.setPointSize(9)
-        self.model_path_label.setFont(model_path_font)
-        self.model_path_label.setWordWrap(True)
-        self.model_path_label.setStyleSheet("color: #888888;")
-        model_info_layout.addWidget(self.model_path_label)
-        
-        # 类别数量
-        self.model_classes_label = QLabel(tr("model_classes_zero"))
-        model_info_layout.addWidget(self.model_classes_label)
-        
-        # 置信度阈值调整
-        conf_layout = QHBoxLayout()
-        self.conf_label = QLabel(tr("confidence"))
-        self.conf_label.setFixedWidth(70)
-        conf_layout.addWidget(self.conf_label)
-        
-        self.conf_slider = QSlider(Qt.Horizontal)
-        self.conf_slider.setRange(1, 100)  # 0.01-1.00 的百分比
-        self.conf_slider.setValue(25)  # 默认 0.25
-        self.conf_slider.setTickPosition(QSlider.TicksBelow)
-        self.conf_slider.setTickInterval(10)
-        self.conf_slider.valueChanged.connect(self.on_confidence_slider_changed)
-        conf_layout.addWidget(self.conf_slider)
-        
-        self.conf_spinbox = QDoubleSpinBox()
-        self.conf_spinbox.setRange(0.01, 1.00)
-        self.conf_spinbox.setSingleStep(0.01)
-        self.conf_spinbox.setValue(0.25)
-        self.conf_spinbox.setDecimals(2)
-        self.conf_spinbox.valueChanged.connect(self.on_confidence_spinbox_changed)
-        self.conf_spinbox.setFixedWidth(60)
-        conf_layout.addWidget(self.conf_spinbox)
-        
-        model_info_layout.addLayout(conf_layout)
-        
-        # IoU 阈值调整
-        iou_layout = QHBoxLayout()
-        self.iou_label = QLabel(tr("iou_threshold"))
-        self.iou_label.setFixedWidth(70)
-        iou_layout.addWidget(self.iou_label)
-        
-        self.iou_slider = QSlider(Qt.Horizontal)
-        self.iou_slider.setRange(1, 100)  # 0.01-1.00 的百分比
-        self.iou_slider.setValue(45)  # 默认 0.45
-        self.iou_slider.setTickPosition(QSlider.TicksBelow)
-        self.iou_slider.setTickInterval(10)
-        self.iou_slider.valueChanged.connect(self.on_iou_slider_changed)
-        iou_layout.addWidget(self.iou_slider)
-        
-        self.iou_spinbox = QDoubleSpinBox()
-        self.iou_spinbox.setRange(0.01, 1.00)
-        self.iou_spinbox.setSingleStep(0.01)
-        self.iou_spinbox.setValue(0.45)
-        self.iou_spinbox.setDecimals(2)
-        self.iou_spinbox.valueChanged.connect(self.on_iou_spinbox_changed)
-        self.iou_spinbox.setFixedWidth(60)
-        iou_layout.addWidget(self.iou_spinbox)
-        
-        model_info_layout.addLayout(iou_layout)
+        splitter.addWidget(self.model_info_panel)
 
-        # 默认禁用阈值控件（模型加载后由 update_model_info_panel 启用）
-        self.conf_slider.setEnabled(False)
-        self.conf_spinbox.setEnabled(False)
-        self.iou_slider.setEnabled(False)
-        self.iou_spinbox.setEnabled(False)
-
-        # 状态指示器
-        self.model_status_indicator = QLabel(tr("model_status_unloaded"))
-        self.model_status_indicator.setStyleSheet("color: #ff6b6b; font-weight: bold;")
-        model_info_layout.addWidget(self.model_status_indicator)
-        
-        # 模型操作按钮
-        model_btn_layout = QHBoxLayout()
-        
-        self.btn_unload_model = QPushButton(tr("unload_model"))
-        self.btn_unload_model.clicked.connect(self.unload_model)
-        self.btn_unload_model.setEnabled(False)
-        model_btn_layout.addWidget(self.btn_unload_model)
-        
-        self.btn_train_model = QPushButton(tr("train_model_btn"))
-        self.btn_train_model.clicked.connect(self.train_model)
-        self.btn_train_model.setEnabled(True)
-        model_btn_layout.addWidget(self.btn_train_model)
-        
-        self.btn_refresh_info = QPushButton(tr("refresh_info"))
-        self.btn_refresh_info.clicked.connect(self.update_model_info_panel)
-        model_btn_layout.addWidget(self.btn_refresh_info)
-        
-        model_info_layout.addLayout(model_btn_layout)
-        
-        model_info_layout.addStretch()
-        
-        splitter.addWidget(self.model_info_group)
-        
         # 设置分割器的初始大小比例
         splitter.setSizes([150, 100, 100, 200, 150])
         
@@ -1137,31 +752,27 @@ class MainWindow(QMainWindow):
     def load_image(self, index: int):
         """加载指定索引的图片"""
         if 0 <= index < self.image_manager.get_image_count():
+            # 切图前自动保存当前标注
+            if self.current_image_path:
+                annotations = self.canvas.get_annotation_items()
+                self.annotation_manager.save_annotations(self.current_image_path, annotations)
+
             image_path = self.image_manager.get_image_path(index)
             self.current_image_path = image_path
             self.current_image_index = index
-            
+
             # 加载图片
             pixmap = QPixmap(image_path)
             if not pixmap.isNull():
-                # 清除场景
-                self.graphics_scene.clear()
-                # 十字准线已被场景 clear() 删除，重置引用
-                self._crosshair_items = None
-                
-                # 添加图片
-                self.image_item = QGraphicsPixmapItem(pixmap)
-                self.graphics_scene.addItem(self.image_item)
-                
-                # 更新视图
-                self.graphics_view.setSceneRect(self.image_item.boundingRect())
-                
+                # 交由 canvas 显示（内部会清除旧场景）
+                self.canvas.display_image(pixmap)
+
                 # 更新状态
                 self.update_image_info()
-                
+
                 # 加载标注
                 self.load_annotations_for_current_image()
-                
+
                 # 选中列表项
                 self.image_list_widget.setCurrentRow(index)
             else:
@@ -1186,95 +797,27 @@ class MainWindow(QMainWindow):
     
     def update_image_info(self):
         """更新图片信息"""
-        if self.current_image_path and hasattr(self, 'image_item') and self.image_item:
+        if self.current_image_path:
             image_name = os.path.basename(self.current_image_path)
-            image_size = self.image_item.pixmap().size()
-            
-            info = f"{image_name} | {image_size.width()}x{image_size.height()}"
-            self.image_info_label.setText(info)
-            self.status_image_info.setText(f"{tr('image_name_label')}: {image_name}")
-        else:
-            self.image_info_label.setText(tr("no_image_loaded"))
-            self.status_image_info.setText("")
+            image_size = self.canvas.get_image_size()
+            if image_size:
+                info = f"{image_name} | {image_size[0]}x{image_size[1]}"
+                self.image_info_label.setText(info)
+                self.status_image_info.setText(f"{tr('image_name_label')}: {image_name}")
+                return
+        self.image_info_label.setText(tr("no_image_loaded"))
+        self.status_image_info.setText("")
     
     def update_stats(self):
         """更新统计信息"""
-        from src.utils.i18n import tr
         count = self.image_manager.get_image_count()
         self.stats_label.setText(tr("total_images_count").replace("{count}", str(count)))
     
     def update_statistics_panel(self):
-        """更新标注统计面板"""
-        try:
-            # 获取图片总数
-            total_images = self.image_manager.get_image_count()
-
-            if total_images == 0:
-                self.stats_total_label.setText(tr("total_images_zero"))
-                self.stats_annotated_label.setText(tr("annotated_images_zero"))
-                self.stats_unannotated_label.setText(tr("unannotated_images_zero"))
-                self.stats_table.setRowCount(0)
-                return
-
-            # 利用 AnnotationManager 的缓存字典，避免每次 O(n) 磁盘 I/O
-            all_anns = self.annotation_manager.get_all_annotations()
-            annotated_paths = set(all_anns.keys())
-            annotated_count = len(annotated_paths)
-            unannotated_count = total_images - annotated_count
-
-            # 统计各类别标注数量
-            class_counts = {}
-            for _, annotations in all_anns.items():
-                for annotation in annotations:
-                    class_id = annotation.class_id
-                    class_counts[class_id] = class_counts.get(class_id, 0) + 1
-            
-            # 缓存统计数据供语言切换时使用
-            self._stats_counts = {
-                "total": total_images,
-                "annotated": annotated_count,
-                "unannotated": unannotated_count,
-            }
-
-            # 更新标签
-            self.stats_total_label.setText(tr("total_images_label") + f" {total_images}")
-            self.stats_annotated_label.setText(tr("annotated_images_label") + f" {annotated_count}")
-            self.stats_unannotated_label.setText(tr("unannotated_images_label") + f" {unannotated_count}")
-            
-            # 更新类别统计表格
-            self.stats_table.setRowCount(len(class_counts))
-            self.stats_table.setSortingEnabled(False)  # 在填充数据时禁用排序
-            
-            # 按类别ID排序
-            sorted_class_ids = sorted(class_counts.keys())
-            
-            for row, class_id in enumerate(sorted_class_ids):
-                count = class_counts[class_id]
-                
-                # 获取类别名称
-                class_info = self.class_manager.get_class(class_id)
-                class_name = class_info["name"] if class_info else tr("unknown_class").replace("{class_id}", str(class_id))
-                
-                # 设置ID单元格
-                id_item = QTableWidgetItem(str(class_id))
-                id_item.setTextAlignment(Qt.AlignCenter)
-                self.stats_table.setItem(row, 0, id_item)
-                
-                # 设置名称单元格
-                name_item = QTableWidgetItem(class_name)
-                self.stats_table.setItem(row, 1, name_item)
-                
-                # 设置数量单元格
-                count_item = QTableWidgetItem(str(count))
-                count_item.setTextAlignment(Qt.AlignCenter)
-                self.stats_table.setItem(row, 2, count_item)
-            
-            self.stats_table.setSortingEnabled(True)  # 重新启用排序
-            self.stats_table.resizeColumnsToContents()
-            
-        except Exception as e:
-            self.logger.error(f"更新统计面板失败: {e}")
-            QMessageBox.warning(self, tr("error"), tr("update_stats_failed") + str(e))
+        """更新标注统计面板（委托给 StatsPanel）"""
+        self.stats_panel.update_statistics(
+            self.image_manager, self.annotation_manager, self.class_manager
+        )
     
     def on_image_item_clicked(self, item):
         """图片列表项点击事件"""
@@ -1297,39 +840,28 @@ class MainWindow(QMainWindow):
     
     def fit_to_window(self):
         """适应窗口大小"""
-        # 检查场景中是否有图片项
-        image_items = [item for item in self.graphics_scene.items() 
-                      if isinstance(item, QGraphicsPixmapItem)]
-        
-        if not image_items:
-            QMessageBox.warning(self, tr("warning"), tr("no_image_loaded"))
-            return
-            
-        image_item = image_items[0]
-        self.graphics_view.fitInView(image_item, Qt.KeepAspectRatio)
-        self.update_scale_factor()
-    
+        self.canvas.fit_to_window()
+        self._update_scale_status()
+
     def zoom_in(self):
         """放大"""
-        self.graphics_view.scale(1.25, 1.25)
-        self.update_scale_factor()
-    
+        self.canvas.zoom_in()
+        self._update_scale_status()
+
     def zoom_out(self):
         """缩小"""
-        self.graphics_view.scale(0.8, 0.8)
-        self.update_scale_factor()
-    
+        self.canvas.zoom_out()
+        self._update_scale_status()
+
     def reset_view(self):
         """重置视图"""
-        self.graphics_view.resetTransform()
-        self.scale_factor = 1.0
+        self.canvas.reset_view()
         self.update_status(tr("view_reset_message"))
-    
-    def update_scale_factor(self):
-        """更新缩放因子"""
-        transform = self.graphics_view.transform()
-        self.scale_factor = transform.m11()
-        self.update_status(tr("zoom_status").replace("{scale_factor}", f"{self.scale_factor:.2f}"))
+
+    def _update_scale_status(self):
+        """更新缩放显示"""
+        factor = self.canvas.get_scale_factor()
+        self.update_status(tr("zoom_status").replace("{scale_factor}", f"{factor:.2f}"))
     
     # ==================== 类别管理 ====================
     
@@ -1374,6 +906,7 @@ class MainWindow(QMainWindow):
                 return
 
         self.selected_class_id = int(class_id)
+        self.canvas.selected_class_id = self.selected_class_id
         self.update_status(tr("selected_class").replace("{class_name}", self.class_manager.get_class_name(self.selected_class_id)))
     
     def add_class(self):
@@ -1451,11 +984,13 @@ class MainWindow(QMainWindow):
             # 如果删除的是当前选中的类别，重置选中状态
             if class_id == self.selected_class_id:
                 self.selected_class_id = 0
+                self.canvas.selected_class_id = 0
                 if self.class_manager.get_class_count() > 0:
                     # 选择第一个可用的类别
                     available_classes = list(self.class_manager.get_classes().keys())
                     if available_classes:
                         self.selected_class_id = available_classes[0]
+                        self.canvas.selected_class_id = self.selected_class_id
             
             # 删除类别
             self.class_manager.delete_class(class_id)
@@ -1484,6 +1019,7 @@ class MainWindow(QMainWindow):
             
             # 重置选中的类别
             self.selected_class_id = 0
+            self.canvas.selected_class_id = 0
             
             # 更新状态
             self.update_status(tr("all_classes_cleared"))
@@ -1497,64 +1033,16 @@ class MainWindow(QMainWindow):
             self.draw_annotations(annotations)
     
     def draw_annotations(self, annotations: List[Annotation]):
-        """绘制标注框"""
-        # 清除现有标注图形项
-        for item in self.graphics_scene.items():
-            if hasattr(item, 'is_annotation_item') and item.is_annotation_item:
-                self.graphics_scene.removeItem(item)
-        
-        # 绘制新的标注框
-        for annotation in annotations:
-            self.draw_annotation_box(annotation)
-    
-    def draw_annotation_box(self, annotation: Annotation):
-        """绘制单个标注框"""
-            # 获取类别颜色（检查类别是否存在）
-        class_info = self.class_manager.get_class(annotation.class_id)
-        if not class_info:
-            # 如果类别不存在，使用默认灰色
-            color = QColor(128, 128, 128)
-            class_name = tr("unknown_class").replace("{class_id}", str(annotation.class_id))
-        else:
-            color = QColor(*class_info["color"])
-            class_name = class_info["name"]
-        
-        # 创建自定义矩形框项
-        rect_item = AnnotationRectItem(
-            annotation.x, annotation.y,
-            annotation.width, annotation.height,
-            annotation, color
-        )
-        
-        # 设置属性
-        rect_item.is_annotation_item = True
-        
-        # 添加到场景
-        self.graphics_scene.addItem(rect_item)
-        
-        # 添加类别标签
-        text_item = QGraphicsTextItem(class_name)
-        text_item.setDefaultTextColor(color)
-        text_item.setPos(annotation.x, annotation.y - 20)
-        
-        # 设置属性
-        text_item.is_annotation_item = True
-        text_item.associated_rect_item = rect_item  # 链接到矩形项
-        
-        self.graphics_scene.addItem(text_item)
+        """绘制标注框 — 委托给 canvas"""
+        self.canvas.draw_annotations(annotations)
     
     def save_annotations(self):
         """保存标注"""
         if not self.current_image_path:
             QMessageBox.warning(self, tr("warning"), tr("no_image_loaded_warning"))
             return
-        
-        # 获取当前图片的所有标注
-        annotations = []
-        for item in self.graphics_scene.items():
-            if hasattr(item, 'annotation'):
-                annotations.append(item.annotation)
-        
+
+        annotations = self.canvas.get_annotation_items()
         self.annotation_manager.save_annotations(self.current_image_path, annotations)
         self.update_status(tr("annotations_saved").replace("{count}", str(len(annotations))))
     
@@ -1563,38 +1051,25 @@ class MainWindow(QMainWindow):
         if not self.current_image_path:
             QMessageBox.warning(self, tr("warning"), tr("no_image_loaded"))
             return
-        
-        # 获取当前选中的标注项（理论上应该只有一个）
-        selected_rect_items = []
-        for item in self.graphics_scene.items():
-            if (hasattr(item, 'annotation') and 
-                hasattr(item, 'is_selected') and 
-                item.is_selected):
-                selected_rect_items.append(item)
-        
-        if not selected_rect_items:
+
+        sel_annotation = self.canvas.get_selected_annotation()
+        if sel_annotation is None:
             QMessageBox.warning(self, tr("warning"), tr("no_annotation_selected"))
             return
-        
-        # 只处理第一个选中的标注项（确保只删除当前选中的）
-        rect_item = selected_rect_items[0]
-        
-        # 获取当前所有标注，找到选中的索引
+
         annotations = self.annotation_manager.get_annotations(self.current_image_path)
-        
-        # 查找标注在列表中的索引
+
         annotation_index = -1
         for i, ann in enumerate(annotations):
-            if (abs(ann.x - rect_item.annotation.x) < 1 and 
-                abs(ann.y - rect_item.annotation.y) < 1 and 
-                abs(ann.width - rect_item.annotation.width) < 1 and 
-                abs(ann.height - rect_item.annotation.height) < 1 and 
-                ann.class_id == rect_item.annotation.class_id):
+            if (abs(ann.x - sel_annotation.x) < 1 and
+                abs(ann.y - sel_annotation.y) < 1 and
+                abs(ann.width - sel_annotation.width) < 1 and
+                abs(ann.height - sel_annotation.height) < 1 and
+                ann.class_id == sel_annotation.class_id):
                 annotation_index = i
                 break
-        
+
         if annotation_index >= 0:
-            # 使用命令模式删除标注
             from src.core.annotation import DeleteAnnotationCommand
             command = DeleteAnnotationCommand(
                 self.annotation_manager,
@@ -1602,16 +1077,10 @@ class MainWindow(QMainWindow):
                 annotation_index
             )
             self.annotation_manager.execute_command(command)
-        
-        # 重新加载标注以更新UI
+
         self.load_annotations_for_current_image()
-        
-        # 更新图片列表显示状态
         self.update_image_list()
-        
         self.update_status(tr("annotation_deleted"))
-        
-        # 更新菜单状态
         self.update_undo_redo_actions()
     
     def clear_all_annotations(self):
@@ -1628,22 +1097,10 @@ class MainWindow(QMainWindow):
         )
         
         if reply == QMessageBox.Yes:
-            # 清除图形项
-            items_to_remove = []
-            for item in self.graphics_scene.items():
-                if hasattr(item, 'is_annotation_item'):
-                    items_to_remove.append(item)
-            
-            for item in items_to_remove:
-                self.graphics_scene.removeItem(item)
-            
-            # 清除标注数据
+            self.canvas.clear_annotation_items()
             self.annotation_manager.clear_annotations(self.current_image_path)
-
-            # 更新图片列表显示
             self.update_image_list()
-            
-            self.update_status(tr("annotations_cleared").replace("{count}", str(len(items_to_remove))))
+            self.update_status(tr("annotations_cleared"))
     
     # ==================== 导出功能 ====================
     
@@ -1653,35 +1110,28 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, tr("warning"), tr("no_image_loaded"))
             return
 
-        output_dir = QFileDialog.getExistingDirectory(
-            self, tr("export_yolo_format_dialog_title"),
-            self._last_browse_path
+        default_path = str(Path(self._last_browse_path) / "data.yaml")
+        save_path, _ = QFileDialog.getSaveFileName(
+            self,
+            tr("export_yolo_format_dialog_title"),
+            default_path,
+            tr("yaml_file_filter"),
         )
 
-        if output_dir:
+        if save_path:
+            output_dir = str(Path(save_path).parent)
             self._last_browse_path = output_dir
-            try:
-                # 允许自定义 data.yaml 文件名
-                default_yaml_path = str(Path(output_dir) / "data.yaml")
-                yaml_path, _ = QFileDialog.getSaveFileName(
-                    self,
-                    tr("export_yaml_filename_dialog_title"),
-                    default_yaml_path,
-                    tr("yaml_file_filter")
-                )
-                if yaml_path:
-                    yaml_filename = Path(yaml_path).name
-                    if not yaml_filename.lower().endswith((".yaml", ".yml")):
-                        yaml_filename += ".yaml"
-                else:
-                    yaml_filename = "data.yaml"
+            yaml_filename = Path(save_path).name
+            if not yaml_filename.lower().endswith((".yaml", ".yml")):
+                yaml_filename += ".yaml"
 
+            try:
                 self.yolo_exporter.export(
                     self.image_manager,
                     self.annotation_manager,
                     self.class_manager,
                     output_dir,
-                    yaml_filename=yaml_filename
+                    yaml_filename=yaml_filename,
                 )
                 QMessageBox.information(self, tr("success"), f"{tr('export_success')} {output_dir}")
             except Exception as e:
@@ -1719,7 +1169,6 @@ class MainWindow(QMainWindow):
     
     def undo(self):
         """撤销"""
-        from src.utils.i18n import tr
         if self.annotation_manager.can_undo():
             success = self.annotation_manager.undo()
             if success:
@@ -1734,7 +1183,6 @@ class MainWindow(QMainWindow):
     
     def redo(self):
         """重做"""
-        from src.utils.i18n import tr
         if self.annotation_manager.can_redo():
             success = self.annotation_manager.redo()
             if success:
@@ -1800,195 +1248,86 @@ class MainWindow(QMainWindow):
             self.class_manager.export_to_yaml(yaml_path)
             QMessageBox.information(self, tr("success"), tr("save_yaml_success") + f" {yaml_path}")
     
-    def eventFilter(self, obj, event):
-        """事件过滤器"""
-        if obj is self.graphics_view.viewport():
-            if event.type() == QEvent.MouseButtonPress:
-                return self.on_graphics_view_mouse_press(event)
-            elif event.type() == QEvent.MouseMove:
-                return self.on_graphics_view_mouse_move(event)
-            elif event.type() == QEvent.MouseButtonRelease:
-                return self.on_graphics_view_mouse_release(event)
-            elif event.type() == QEvent.Wheel:
-                return self.on_graphics_view_wheel(event)
-        
-        return super().eventFilter(obj, event)
-    
-    def on_graphics_view_mouse_press(self, event: QMouseEvent):
-        """图形视图鼠标按下事件"""
-        scene_pos = self.graphics_view.mapToScene(event.pos())
-        
-        # 检查是否点击了标注框
-        clicked_items = self.graphics_view.items(event.pos())
-        for item in clicked_items:
-            if hasattr(item, 'annotation') and isinstance(item, QGraphicsRectItem):
-                # 点击的是标注框，不开始绘制，让事件传递给标注框处理
-                self.is_drawing = False
-                return False  # 返回 False 让事件继续传递
-        
-        if event.button() == Qt.LeftButton:
-            # 开始绘制标注框
-            self.is_drawing = True
-            self.drawing_start_point = scene_pos
-            self.drawing_end_point = scene_pos
-            
-            # 设置十字形鼠标
-            self.graphics_view.viewport().setCursor(Qt.CrossCursor)
-            
-            # 创建临时绘制项
-            self.temp_rect_item = QGraphicsRectItem()
-            self.temp_rect_item.setPen(QPen(Qt.red, 2, Qt.DashLine))
-            self.graphics_scene.addItem(self.temp_rect_item)
-            
-            return True
-        
-        return False
-    
-    def on_graphics_view_mouse_move(self, event: QMouseEvent):
-        """图形视图鼠标移动事件"""
-        # 总是设置十字形鼠标
-        self.graphics_view.viewport().setCursor(Qt.CrossCursor)
-        
-        # 获取场景坐标
-        scene_pos = self.graphics_view.mapToScene(event.pos())
-        
-        # 如果正在绘制，更新临时矩形
-        if self.is_drawing and hasattr(self, 'temp_rect_item') and self.temp_rect_item:
-            self.drawing_end_point = scene_pos
-            
-            # 更新临时矩形框
-            if self.drawing_start_point:
-                rect = QRectF(
-                    min(self.drawing_start_point.x(), scene_pos.x()),
-                    min(self.drawing_start_point.y(), scene_pos.y()),
-                    abs(self.drawing_start_point.x() - scene_pos.x()),
-                    abs(self.drawing_start_point.y() - scene_pos.y())
-                )
-                if self.temp_rect_item:
-                    self.temp_rect_item.setRect(rect)
-        else:
-            # 如果不是正在绘制，绘制十字准线
-            self.draw_crosshair(scene_pos)
-        
-        return True
-    
-    def draw_crosshair(self, scene_pos: QPointF):
-        """绘制十字准线 — 复用已有图形项，避免反复创建/销毁"""
-        # 第一次调用时创建并保存引用
-        if not hasattr(self, '_crosshair_items') or self._crosshair_items is None:
-            scene_rect = self.graphics_scene.sceneRect()
-            if scene_rect.isNull():
-                return
-            vline = QGraphicsLineItem()
-            vline.setPen(QPen(QColor(255, 255, 0, 128), 1, Qt.DashLine))
-            vline.is_crosshair = True
-            self.graphics_scene.addItem(vline)
-            hline = QGraphicsLineItem()
-            hline.setPen(QPen(QColor(255, 255, 0, 128), 1, Qt.DashLine))
-            hline.is_crosshair = True
-            self.graphics_scene.addItem(hline)
-            dot = QGraphicsEllipseItem(0, 0, 4, 4)
-            dot.setBrush(QBrush(QColor(255, 0, 0, 200)))
-            dot.setPen(QPen(Qt.NoPen))
-            dot.is_crosshair = True
-            self.graphics_scene.addItem(dot)
-            self._crosshair_items = (vline, hline, dot)
-        else:
-            # 检查悬空引用 — 场景 clear() 后 item.scene() 为 None
-            stale = any(item.scene() is None for item in self._crosshair_items)
-            if stale:
-                self._crosshair_items = None
-                return
-            # 隐藏旧十字线
-            for item in self._crosshair_items:
-                item.setVisible(False)
+    # ==================== Canvas 信号处理 ====================
 
-        # 获取场景边界
-        scene_rect = self.graphics_scene.sceneRect()
-        if scene_rect.isNull():
-            return
-
-        vline, hline, dot = self._crosshair_items
-        vline.setLine(scene_rect.x(), scene_pos.y(), scene_rect.x() + scene_rect.width(), scene_pos.y())
-        hline.setLine(scene_pos.x(), scene_rect.y(), scene_pos.x(), scene_rect.y() + scene_rect.height())
-        dot.setRect(scene_pos.x() - 2, scene_pos.y() - 2, 4, 4)
-        for item in self._crosshair_items:
-            item.setVisible(True)
-    
-    def on_graphics_view_mouse_release(self, event: QMouseEvent):
-        """图形视图鼠标释放事件"""
-        if event.button() == Qt.LeftButton and self.is_drawing:
-            self.is_drawing = False
-            
-            # 移除临时绘制项
-            if hasattr(self, 'temp_rect_item'):
-                self.graphics_scene.removeItem(self.temp_rect_item)
-                delattr(self, 'temp_rect_item')
-            
-            # 创建标注
-            if self.drawing_start_point and self.drawing_end_point:
-                rect = QRectF(
-                    min(self.drawing_start_point.x(), self.drawing_end_point.x()),
-                    min(self.drawing_start_point.y(), self.drawing_end_point.y()),
-                    abs(self.drawing_start_point.x() - self.drawing_end_point.x()),
-                    abs(self.drawing_start_point.y() - self.drawing_end_point.y())
-                )
-                
-                # 确保矩形大小合理
-                if rect.width() > 10 and rect.height() > 10:
-                    annotation = Annotation(
-                        rect.x(), rect.y(),
-                        rect.width(), rect.height(),
-                        self.selected_class_id
-                    )
-                    
-                    # 使用命令模式添加标注
-                    self.add_annotation_with_command(annotation)
-                    
-                self.update_status(tr("annotation_created").replace("{class_name}", self.class_manager.get_class_name(self.selected_class_id)))
-            
-            self.drawing_start_point = None
-            self.drawing_end_point = None
-            
-            return True
-        
-        return False
-    
-    def add_annotation_with_command(self, annotation: Annotation):
-        """使用命令模式添加标注"""
-        if not self.current_image_path:
-            return
-        
-        # 创建添加命令
+    def add_annotation_with_command(self, annotation):
+        """通过命令模式添加标注（支持撤销）"""
         from src.core.annotation import AddAnnotationCommand
         command = AddAnnotationCommand(
             self.annotation_manager,
             self.current_image_path,
-            annotation
+            annotation,
         )
-        
-        # 执行命令
         self.annotation_manager.execute_command(command)
-        
-        # 更新UI显示
-        self.draw_annotation_box(annotation)
-        
-        # 更新菜单状态
+        self.update_image_list()
         self.update_undo_redo_actions()
-    
-    def on_graphics_view_wheel(self, event: QWheelEvent):
-        """图形视图滚轮事件"""
-        # 按住Ctrl键时缩放
-        if event.modifiers() & Qt.ControlModifier:
-            delta = event.angleDelta().y()
-            if delta > 0:
-                self.zoom_in()
-            else:
-                self.zoom_out()
-            return True
-        
-        return False
-    
+
+    def _on_canvas_annotation_created(self, annotation):
+        """用户通过画布绘制了一个新标注"""
+        self.add_annotation_with_command(annotation)
+        class_name = self.class_manager.get_class_name(self.selected_class_id)
+        self.update_status(tr("annotation_created").replace("{class_name}", class_name))
+
+    def _on_canvas_annotation_deleted(self, annotation):
+        """用户通过右键菜单删除了一个标注"""
+        if not self.current_image_path:
+            return
+
+        annotations = self.annotation_manager.get_annotations(self.current_image_path)
+        annotation_index = -1
+        for i, ann in enumerate(annotations):
+            if (abs(ann.x - annotation.x) < 1 and
+                abs(ann.y - annotation.y) < 1 and
+                abs(ann.width - annotation.width) < 1 and
+                abs(ann.height - annotation.height) < 1 and
+                ann.class_id == annotation.class_id):
+                annotation_index = i
+                break
+
+        if annotation_index >= 0:
+            from src.core.annotation import DeleteAnnotationCommand
+            command = DeleteAnnotationCommand(
+                self.annotation_manager,
+                self.current_image_path,
+                annotation_index
+            )
+            self.annotation_manager.execute_command(command)
+
+        self.load_annotations_for_current_image()
+        self.update_image_list()
+        self.update_status(tr("annotation_deleted"))
+        self.update_undo_redo_actions()
+
+    # ==================== 面板信号处理 ====================
+
+    def _on_stats_refresh(self):
+        """统计面板刷新按钮"""
+        self.stats_panel.update_statistics(
+            self.image_manager, self.annotation_manager, self.class_manager
+        )
+
+    def _on_panel_conf_changed(self, value: float):
+        """模型信息面板置信度阈值变化"""
+        if self.model_manager.is_model_loaded():
+            self.model_manager.set_confidence_threshold(value)
+            self.update_status(
+                tr("confidence_threshold_set").replace("{value}", f"{value:.2f}")
+            )
+
+    def _on_panel_iou_changed(self, value: float):
+        """模型信息面板IoU阈值变化"""
+        if self.model_manager.is_model_loaded():
+            self.model_manager.set_iou_threshold(value)
+            self.update_status(
+                tr("iou_threshold_set").replace("{value}", f"{value:.2f}")
+            )
+
+    def _on_model_info_refresh(self):
+        """模型信息面板刷新按钮"""
+        self.model_info_panel.update_info(self.model_manager)
+
+    # ==================== 模型管理方法 ====================
+
     # ==================== 模型管理方法 ====================
     
     def load_model(self):
@@ -2040,11 +1379,11 @@ class MainWindow(QMainWindow):
                         QMessageBox.information(self, tr("success"), tr("success"))
                 
                 # 更新模型信息面板
-                self.update_model_info_panel()
-                
+                self.model_info_panel.update_info(self.model_manager)
+
                 # 如果模型信息面板是隐藏的，自动显示它
-                if not self.model_info_group.isVisible():
-                    self.model_info_group.setVisible(True)
+                if not self.model_info_panel.isVisible():
+                    self.model_info_panel.setVisible(True)
                     self.action_model_info.setText(tr("hide_model_info"))
                 
                 QMessageBox.information(
@@ -2061,12 +1400,12 @@ class MainWindow(QMainWindow):
     def show_model_info(self):
         """显示/隐藏模型信息面板"""
         # 切换面板可见性
-        is_visible = not self.model_info_group.isVisible()
-        self.model_info_group.setVisible(is_visible)
-        
+        is_visible = not self.model_info_panel.isVisible()
+        self.model_info_panel.setVisible(is_visible)
+
         # 如果显示面板，更新内容
         if is_visible:
-            self.update_model_info_panel()
+            self.model_info_panel.update_info(self.model_manager)
             # 确保UI文本使用当前语言
             self.update_other_ui_elements()
         
@@ -2121,15 +1460,9 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, tr("warning"), tr("convert_detections_failed"))
                 return
             
-            # 清空现有标注
-            for item in self.graphics_scene.items():
-                if hasattr(item, 'is_annotation_item') and item.is_annotation_item:
-                    self.graphics_scene.removeItem(item)
-            
-            # 绘制新标注
-            for annotation in annotations:
-                self.draw_annotation_box(annotation)
-            
+            # 通过 canvas 清空并绘制新标注
+            self.canvas.draw_annotations(annotations)
+
             # 保存标注
             self.annotation_manager.save_annotations(self.current_image_path, annotations)
             
@@ -2148,7 +1481,6 @@ class MainWindow(QMainWindow):
     
     def batch_auto_annotate(self):
         """批量自动标注"""
-        from src.utils.i18n import tr
         
         if self.image_manager.get_image_count() == 0:
             QMessageBox.warning(self, tr("warning"), tr("no_image_loaded"))
@@ -2226,60 +1558,6 @@ class MainWindow(QMainWindow):
     
     # ==================== 模型参数调整方法 ====================
     
-    def on_confidence_slider_changed(self, value: int):
-        """置信度滑块值改变"""
-        # 将滑块值(1-100)转换为0.01-1.00
-        conf_value = value / 100.0
-        self.conf_spinbox.blockSignals(True)
-        self.conf_spinbox.setValue(conf_value)
-        self.conf_spinbox.blockSignals(False)
-        
-        # 更新模型管理器中的置信度阈值
-        if self.model_manager.is_model_loaded():
-            self.model_manager.set_confidence_threshold(conf_value)
-            self.update_status(tr("confidence_threshold_set").replace("{value}", f"{conf_value:.2f}"))
-    
-    def on_confidence_spinbox_changed(self, value: float):
-        """置信度SpinBox值改变"""
-        from src.utils.i18n import tr
-        # 将值(0.01-1.00)转换为滑块值(1-100)
-        slider_value = int(value * 100)
-        self.conf_slider.blockSignals(True)
-        self.conf_slider.setValue(slider_value)
-        self.conf_slider.blockSignals(False)
-        
-        # 更新模型管理器中的置信度阈值
-        if self.model_manager.is_model_loaded():
-            self.model_manager.set_confidence_threshold(value)
-            self.update_status(tr("confidence_threshold_set").replace("{value}", f"{value:.2f}"))
-    
-    def on_iou_slider_changed(self, value: int):
-        """IoU滑块值改变"""
-        # 将滑块值(1-100)转换为0.01-1.00
-        iou_value = value / 100.0
-        self.iou_spinbox.blockSignals(True)
-        self.iou_spinbox.setValue(iou_value)
-        self.iou_spinbox.blockSignals(False)
-        
-        # 更新模型管理器中的IoU阈值
-        if self.model_manager.is_model_loaded():
-            self.model_manager.set_iou_threshold(iou_value)
-            self.update_status(tr("iou_threshold_set").replace("{value}", f"{iou_value:.2f}"))
-    
-    def on_iou_spinbox_changed(self, value: float):
-        """IoU SpinBox值改变"""
-        from src.utils.i18n import tr
-        # 将值(0.01-1.00)转换为滑块值(1-100)
-        slider_value = int(value * 100)
-        self.iou_slider.blockSignals(True)
-        self.iou_slider.setValue(slider_value)
-        self.iou_slider.blockSignals(False)
-        
-        # 更新模型管理器中的IoU阈值
-        if self.model_manager.is_model_loaded():
-            self.model_manager.set_iou_threshold(value)
-            self.update_status(tr("iou_threshold_set").replace("{value}", f"{value:.2f}"))
-    
     def unload_model(self):
         """卸载模型"""
         if not self.model_manager.is_model_loaded():
@@ -2294,85 +1572,18 @@ class MainWindow(QMainWindow):
         )
         
         if reply == QMessageBox.Yes:
-            # 卸载模型
-            self.model_manager.model = None
-            self.model_manager.model_path = None
-            self.model_manager.model_loaded = False
-            self.model_manager.class_names = {}
-            
-            # 更新UI状态
-            self.btn_unload_model.setEnabled(False)
-            self.conf_slider.setEnabled(False)
-            self.conf_spinbox.setEnabled(False)
-            self.iou_slider.setEnabled(False)
-            self.iou_spinbox.setEnabled(False)
-            
-            # 更新模型信息面板
-            self.update_model_info_panel()
+            self.model_manager.unload_model()
+            self.model_info_panel.update_info(self.model_manager)
             
             self.update_status(tr("model_unloaded"))
             QMessageBox.information(self, tr("success"), tr("model_unloaded"))
     
     def update_model_info_panel(self):
-        """更新模型信息面板内容"""
-        from src.utils.i18n import tr
-        
-        model_info = self.model_manager.get_model_info()
-        
-        if not model_info["loaded"]:
-            self.model_name_label.setText(tr("model_not_loaded"))
-            self.model_path_label.setText(f"{tr('model_path')} {tr('none')}")
-            self.model_classes_label.setText(f"{tr('model_classes')} 0")
-            self.model_status_indicator.setText("● " + tr("model_status_unloaded"))
-            self.model_status_indicator.setStyleSheet("color: #ff6b6b; font-weight: bold;")
-            
-            # 禁用控件
-            self.conf_slider.setEnabled(False)
-            self.conf_spinbox.setEnabled(False)
-            self.iou_slider.setEnabled(False)
-            self.iou_spinbox.setEnabled(False)
-            self.btn_unload_model.setEnabled(False)
-            return
-        
-        # 更新模型信息
-        model_name = os.path.basename(model_info["path"]) if model_info["path"] else tr("unknown_model")
-        self.model_name_label.setText(f"{tr('model_label')} {model_name}")
-        self.model_path_label.setText(f"{tr('model_path')} {model_info['path']}")
-        self.model_classes_label.setText(f"{tr('model_classes')} {model_info['class_count']}")
-        self.model_status_indicator.setText("● " + tr("model_status_loaded"))
-        self.model_status_indicator.setStyleSheet("color: #6bff6b; font-weight: bold;")
-        
-        # 更新阈值控件
-        conf_value = model_info["confidence_threshold"]
-        iou_value = model_info["iou_threshold"]
-        
-        # 更新滑块和SpinBox
-        self.conf_slider.blockSignals(True)
-        self.conf_slider.setValue(int(conf_value * 100))
-        self.conf_slider.setEnabled(True)
-        self.conf_slider.blockSignals(False)
-        
-        self.conf_spinbox.blockSignals(True)
-        self.conf_spinbox.setValue(conf_value)
-        self.conf_spinbox.setEnabled(True)
-        self.conf_spinbox.blockSignals(False)
-        
-        self.iou_slider.blockSignals(True)
-        self.iou_slider.setValue(int(iou_value * 100))
-        self.iou_slider.setEnabled(True)
-        self.iou_slider.blockSignals(False)
-        
-        self.iou_spinbox.blockSignals(True)
-        self.iou_spinbox.setValue(iou_value)
-        self.iou_spinbox.setEnabled(True)
-        self.iou_spinbox.blockSignals(False)
-        
-        # 启用卸载按钮
-        self.btn_unload_model.setEnabled(True)
+        """更新模型信息面板（委托给 ModelInfoPanel）"""
+        self.model_info_panel.update_info(self.model_manager)
     
     def train_model(self):
         """训练模型"""
-        from src.utils.i18n import tr
         # 检查是否加载了模型，如果有则获取模型路径作为默认值
         default_model_path = ""
         if self.model_manager.is_model_loaded():
@@ -2411,7 +1622,6 @@ class MainWindow(QMainWindow):
     
     def update_ui_texts(self):
         """更新UI文本（语言切换后重新设置所有文本）"""
-        from src.utils.i18n import tr
         
         # 窗口标题
         self.setWindowTitle(tr("yolo_label_tool"))
@@ -2433,215 +1643,87 @@ class MainWindow(QMainWindow):
     
     def update_menu_texts(self):
         """更新菜单文本"""
-        from src.utils.i18n import tr
-        
-        # 使用已保存的菜单引用
-        if hasattr(self, 'file_menu'):
-            self.file_menu.setTitle(tr("file"))
-        if hasattr(self, 'edit_menu'):
-            self.edit_menu.setTitle(tr("edit"))
-        if hasattr(self, 'view_menu'):
-            self.view_menu.setTitle(tr("view"))
-        if hasattr(self, 'class_menu'):
-            self.class_menu.setTitle(tr("classes"))
-        if hasattr(self, 'theme_menu'):
-            self.theme_menu.setTitle(tr("theme"))
-        if hasattr(self, 'model_menu'):
-            self.model_menu.setTitle(tr("model"))
-        if hasattr(self, 'annotate_menu'):
-            self.annotate_menu.setTitle(tr("annotate"))
-        if hasattr(self, 'language_menu'):
-            self.language_menu.setTitle(tr("language"))
-        
-        # 更新动作文本
-        if hasattr(self, 'action_open_folder'):
-            self.action_open_folder.setText(tr("open_folder"))
-        if hasattr(self, 'action_save'):
-            self.action_save.setText(tr("save_annotations"))
-        if hasattr(self, 'action_export'):
-            self.action_export.setText(tr("export_yolo_format"))
-        if hasattr(self, 'action_exit'):
-            self.action_exit.setText(tr("exit"))
-        
-        if hasattr(self, 'action_undo'):
-            self.action_undo.setText(tr("undo"))
-        if hasattr(self, 'action_redo'):
-            self.action_redo.setText(tr("redo"))
-        if hasattr(self, 'action_delete'):
-            self.action_delete.setText(tr("delete_selected"))
-        
-        if hasattr(self, 'action_zoom_in'):
-            self.action_zoom_in.setText(tr("zoom_in"))
-        if hasattr(self, 'action_zoom_out'):
-            self.action_zoom_out.setText(tr("zoom_out"))
-        if hasattr(self, 'action_fit'):
-            self.action_fit.setText(tr("fit_to_window"))
-        
-        if hasattr(self, 'action_load_model'):
-            self.action_load_model.setText(tr("load_model"))
-        if hasattr(self, 'action_model_info'):
-            self.action_model_info.setText(tr("model_info"))
-        if hasattr(self, 'action_train_model'):
-            self.action_train_model.setText(tr("train_model"))
-        if hasattr(self, 'action_auto_annotate'):
-            self.action_auto_annotate.setText(tr("auto_annotate"))
-        if hasattr(self, 'action_batch_auto_annotate'):
-            self.action_batch_auto_annotate.setText(tr("batch_auto_annotate"))
-        
-        if hasattr(self, 'action_load_yaml'):
-            self.action_load_yaml.setText(tr("load_yaml"))
-        if hasattr(self, 'action_save_yaml'):
-            self.action_save_yaml.setText(tr("save_yaml"))
-        
-        if hasattr(self, 'action_dark_theme'):
-            self.action_dark_theme.setText(tr("dark_theme"))
-        if hasattr(self, 'action_light_theme'):
-            self.action_light_theme.setText(tr("light_theme"))
-        
-        if hasattr(self, 'action_chinese'):
-            self.action_chinese.setText(tr("chinese"))
-        if hasattr(self, 'action_english'):
-            self.action_english.setText(tr("english"))
-    
+
+        self.file_menu.setTitle(tr("file"))
+        self.edit_menu.setTitle(tr("edit"))
+        self.view_menu.setTitle(tr("view"))
+        self.class_menu.setTitle(tr("classes"))
+        self.theme_menu.setTitle(tr("theme"))
+        self.model_menu.setTitle(tr("model"))
+        self.annotate_menu.setTitle(tr("annotate"))
+        self.language_menu.setTitle(tr("language"))
+
+        self.action_open_folder.setText(tr("open_folder"))
+        self.action_save.setText(tr("save_annotations"))
+        self.action_export.setText(tr("export_yolo_format"))
+        self.action_exit.setText(tr("exit"))
+
+        self.action_undo.setText(tr("undo"))
+        self.action_redo.setText(tr("redo"))
+        self.action_delete.setText(tr("delete_selected"))
+
+        self.action_zoom_in.setText(tr("zoom_in"))
+        self.action_zoom_out.setText(tr("zoom_out"))
+        self.action_fit.setText(tr("fit_to_window"))
+
+        self.action_load_model.setText(tr("load_model"))
+        self.action_model_info.setText(tr("model_info"))
+        self.action_train_model.setText(tr("train_model"))
+        self.action_auto_annotate.setText(tr("auto_annotate"))
+        self.action_batch_auto_annotate.setText(tr("batch_auto_annotate"))
+
+        self.action_load_yaml.setText(tr("load_yaml"))
+        self.action_save_yaml.setText(tr("save_yaml"))
+
+        self.action_dark_theme.setText(tr("dark_theme"))
+        self.action_light_theme.setText(tr("light_theme"))
+
+        self.action_chinese.setText(tr("chinese"))
+        self.action_english.setText(tr("english"))
+
     def update_button_texts(self):
         """更新按钮文本"""
-        from src.utils.i18n import tr
-        
-        # 左侧面板按钮
-        if hasattr(self, 'btn_load_folder'):
-            self.btn_load_folder.setText(tr("load_folder"))
-        if hasattr(self, 'btn_prev'):
-            self.btn_prev.setText(tr("previous_image"))
-        if hasattr(self, 'btn_next'):
-            self.btn_next.setText(tr("next_image"))
-        
-        # 中间面板按钮
-        if hasattr(self, 'btn_fit'):
-            self.btn_fit.setText(tr("fit_to_window"))
-        if hasattr(self, 'btn_zoom_in'):
-            self.btn_zoom_in.setText(tr("zoom_in"))
-        if hasattr(self, 'btn_zoom_out'):
-            self.btn_zoom_out.setText(tr("zoom_out"))
-        if hasattr(self, 'btn_reset'):
-            self.btn_reset.setText(tr("reset"))
-        
-        # 右侧面板按钮
-        if hasattr(self, 'btn_add_class'):
-            self.btn_add_class.setText(tr("add"))
-        if hasattr(self, 'btn_edit_class'):
-            self.btn_edit_class.setText(tr("edit"))
-        if hasattr(self, 'btn_delete_class'):
-            self.btn_delete_class.setText(tr("delete"))
-        if hasattr(self, 'btn_clear_classes'):
-            self.btn_clear_classes.setText(tr("clear_all_classes"))
 
-        if hasattr(self, 'btn_delete_annotation'):
-            self.btn_delete_annotation.setText(tr("delete_selected_annotation"))
-        if hasattr(self, 'btn_clear_all'):
-            self.btn_clear_all.setText(tr("clear_all_annotations"))
-        
-        if hasattr(self, 'btn_export_yolo'):
-            self.btn_export_yolo.setText(tr("export_yolo"))
-        if hasattr(self, 'btn_export_split'):
-            self.btn_export_split.setText(tr("export_dataset_split"))
-        
-        if hasattr(self, 'btn_refresh_stats'):
-            self.btn_refresh_stats.setText(tr("refresh_stats"))
-        
-        if hasattr(self, 'btn_unload_model'):
-            self.btn_unload_model.setText(tr("unload_model"))
-        if hasattr(self, 'btn_train_model'):
-            self.btn_train_model.setText(tr("train_model_btn"))
-        if hasattr(self, 'btn_refresh_info'):
-            self.btn_refresh_info.setText(tr("refresh_info"))
-    
+        self.btn_load_folder.setText(tr("load_folder"))
+        self.btn_prev.setText(tr("previous_image"))
+        self.btn_next.setText(tr("next_image"))
+
+        self.btn_fit.setText(tr("fit_to_window"))
+        self.btn_zoom_in.setText(tr("zoom_in"))
+        self.btn_zoom_out.setText(tr("zoom_out"))
+        self.btn_reset.setText(tr("reset"))
+
+        self.btn_add_class.setText(tr("add"))
+        self.btn_edit_class.setText(tr("edit"))
+        self.btn_delete_class.setText(tr("delete"))
+        self.btn_clear_classes.setText(tr("clear_all_classes"))
+
+        self.btn_delete_annotation.setText(tr("delete_selected_annotation"))
+        self.btn_clear_all.setText(tr("clear_all_annotations"))
+
+        self.btn_export_yolo.setText(tr("export_yolo"))
+        self.btn_export_split.setText(tr("export_dataset_split"))
+
     def update_panel_titles(self):
         """更新面板标题"""
-        from src.utils.i18n import tr
-        
-        # 左侧面板标题
-        if hasattr(self, 'left_panel_title_label'):
-            self.left_panel_title_label.setText(tr("image_list"))
-        
-        # 中间面板标题
-        if hasattr(self, 'center_panel_title_label'):
-            self.center_panel_title_label.setText(tr("image_annotation"))
-        
-        # 右侧面板标题
-        if hasattr(self, 'right_panel_title_label'):
-            self.right_panel_title_label.setText(tr("class_management"))
-    
+
+        self.left_panel_title_label.setText(tr("image_list"))
+        self.center_panel_title_label.setText(tr("image_annotation"))
+        self.right_panel_title_label.setText(tr("class_management"))
+
     def update_other_ui_elements(self):
         """更新其他UI元素"""
-        from src.utils.i18n import tr
-        
-        # 更新GroupBox标题
-        if hasattr(self, 'class_group'):
-            self.class_group.setTitle(tr("annotation_classes"))
-        if hasattr(self, 'annotation_group'):
-            self.annotation_group.setTitle(tr("annotation_operations"))
-        if hasattr(self, 'export_group'):
-            self.export_group.setTitle(tr("data_export"))
-        if hasattr(self, 'stats_group'):
-            self.stats_group.setTitle(tr("annotation_stats"))
-        if hasattr(self, 'model_info_group'):
-            self.model_info_group.setTitle(tr("model_info_panel"))
-        
-        # 更新状态信息
-        if hasattr(self, 'stats_label') and self.image_manager.get_image_count() == 0:
+
+        self.class_group.setTitle(tr("annotation_classes"))
+        self.annotation_group.setTitle(tr("annotation_operations"))
+        self.export_group.setTitle(tr("data_export"))
+
+        self.stats_panel.update_language()
+        self.model_info_panel.update_language(self.model_manager)
+
+        if self.image_manager.get_image_count() == 0:
             self.stats_label.setText(tr("no_image_loaded"))
-        
-        if hasattr(self, 'image_info_label') and not self.current_image_path:
+
+        if not self.current_image_path:
             self.image_info_label.setText(tr("no_image_loaded"))
-        
-        if hasattr(self, 'model_name_label') and not self.model_manager.is_model_loaded():
-            self.model_name_label.setText(tr("model_not_loaded"))
-        
-        # 更新统计信息标签（使用缓存避免脆弱的正则解析）
-        if hasattr(self, '_stats_counts') and self._stats_counts["total"] != 0:
-            c = self._stats_counts
-            self.stats_total_label.setText(f"{tr('total_images_label')} {c['total']}")
-            self.stats_annotated_label.setText(f"{tr('annotated_images_label')} {c['annotated']}")
-            self.stats_unannotated_label.setText(f"{tr('unannotated_images_label')} {c['unannotated']}")
-        else:
-            self.stats_total_label.setText(tr("total_images_zero"))
-            self.stats_annotated_label.setText(tr("annotated_images_zero"))
-            self.stats_unannotated_label.setText(tr("unannotated_images_zero"))
-        
-        # 更新表格表头
-        if hasattr(self, 'stats_table'):
-            self.stats_table.setHorizontalHeaderLabels([tr("class_id"), tr("class_name"), tr("annotation_count")])
-        
-        # 更新模型信息面板标签
-        if hasattr(self, 'model_path_label'):
-            path_text = self.model_path_label.text()
-            # 提取路径值
-            if path_text.startswith("路径:"):
-                path_value = path_text[3:].strip()
-                self.model_path_label.setText(f"{tr('model_path')} {path_value}")
-            elif path_text.startswith("Path:"):
-                path_value = path_text[5:].strip()
-                self.model_path_label.setText(f"{tr('model_path')} {path_value}")
-        
-        if hasattr(self, 'model_classes_label'):
-            classes_text = self.model_classes_label.text()
-            if classes_text.startswith("类别数:"):
-                classes_value = classes_text[4:].strip()
-                self.model_classes_label.setText(f"{tr('model_classes')} {classes_value}")
-            elif classes_text.startswith("Classes:"):
-                classes_value = classes_text[8:].strip()
-                self.model_classes_label.setText(f"{tr('model_classes')} {classes_value}")
-        
-        # 更新模型状态指示器
-        if hasattr(self, 'model_status_indicator'):
-            status_text = self.model_status_indicator.text()
-            if "未加载" in status_text or "not loaded" in status_text:
-                self.model_status_indicator.setText("● " + tr("model_not_loaded"))
-            elif "已加载" in status_text or "loaded" in status_text:
-                self.model_status_indicator.setText("● " + tr("model_loaded"))
-        
-        # 更新置信度和IoU标签
-        if hasattr(self, 'conf_label'):
-            self.conf_label.setText(tr("confidence"))
-        if hasattr(self, 'iou_label'):
-            self.iou_label.setText(tr("iou_threshold"))
+

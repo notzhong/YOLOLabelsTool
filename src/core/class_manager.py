@@ -154,11 +154,7 @@ class ClassManager:
     
     def export_to_yaml(self, output_path: str, dataset_path: str = "./dataset"):
         """导出 YOLO 格式的 data.yaml"""
-        class_ids = sorted(self._classes.keys())
-        if class_ids and class_ids == list(range(max(class_ids) + 1)):
-            names_value = [self._classes[i]["name"] for i in class_ids]
-        else:
-            names_value = {i: self._classes[i]["name"] for i in class_ids}
+        names_value = self.build_names_config()
 
         yaml_data = {
             "path": dataset_path,
@@ -255,6 +251,13 @@ class ClassManager:
         """获取下一个可用的类别ID"""
         return self._next_class_id
     
+    def build_names_config(self):
+        """构建 YOLO data.yaml 的 names 字段：ID 连续用列表，否则用字典"""
+        class_ids = sorted(self._classes.keys())
+        if class_ids and class_ids == list(range(max(class_ids) + 1)):
+            return [self._classes[i]["name"] for i in class_ids]
+        return {i: self._classes[i]["name"] for i in class_ids}
+
     def clear_all(self) -> None:
         """清空所有类别"""
         self._classes.clear()

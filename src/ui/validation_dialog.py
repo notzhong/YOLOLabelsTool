@@ -9,8 +9,8 @@ from typing import Optional, Tuple
 import cv2
 import numpy as np
 
-from PySide6.QtCore import Qt, QTimer, QRect, QPoint, QSize, QEvent
-from PySide6.QtGui import QImage, QPixmap, QCursor, QGuiApplication, QWindow, QScreen
+from PySide6.QtCore import Qt, QTimer, QRect, QPoint
+from PySide6.QtGui import QImage, QPixmap, QCursor, QGuiApplication, QScreen
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -24,13 +24,20 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QRubberBand,
     QSlider,
     QVBoxLayout,
 )
 
 from src.utils.i18n import tr
 from src.utils.logger import get_logger_simple
+from src.utils.widget_helpers import SliderSpinBoxBinder
+from src.ui.region_selector import WindowHighlighter, RegionSelector
+from src.utils.win32_helpers import (
+    get_user32, to_root_window, get_window_title,
+    VK_LBUTTON, VK_RBUTTON,
+    SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
+    SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
+)
 
 logger = get_logger_simple(__name__)
 
@@ -40,266 +47,6 @@ try:
     DXCAM_AVAILABLE = True
 except Exception:
     DXCAM_AVAILABLE = False
-
-
-_user32 = ctypes.windll.user32
-# WinAPI constants used by window picking.
-GA_ROOT = 2
-MONITOR_DEFAULTTONEAREST = 2
-VK_LBUTTON = 0x01
-VK_RBUTTON = 0x02
-# Virtual screen metrics
-SM_XVIRTUALSCREEN = 76
-SM_YVIRTUALSCREEN = 77
-SM_CXVIRTUALSCREEN = 78
-SM_CYVIRTUALSCREEN = 79
-
-
-class MONITORINFOEXW(ctypes.Structure):
-    _fields_ = [
-        ("cbSize", wintypes.DWORD),
-        ("rcMonitor", wintypes.RECT),
-        ("rcWork", wintypes.RECT),
-        ("dwFlags", wintypes.DWORD),
-        ("szDevice", wintypes.WCHAR * 32),
-    ]
-
-
-def _configure_user32() -> None:
-    """Set explicit WinAPI signatures to avoid HWND truncation on 64-bit."""
-    _user32.WindowFromPoint.argtypes = [wintypes.POINT]
-    _user32.WindowFromPoint.restype = wintypes.HWND
-
-    _user32.GetAncestor.argtypes = [wintypes.HWND, wintypes.UINT]
-    _user32.GetAncestor.restype = wintypes.HWND
-
-    _user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
-    _user32.GetWindowTextLengthW.restype = ctypes.c_int
-
-    _user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
-    _user32.GetWindowTextW.restype = ctypes.c_int
-
-    _user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
-    _user32.GetWindowRect.restype = wintypes.BOOL
-
-    _user32.IsWindow.argtypes = [wintypes.HWND]
-    _user32.IsWindow.restype = wintypes.BOOL
-
-    _user32.IsWindowVisible.argtypes = [wintypes.HWND]
-    _user32.IsWindowVisible.restype = wintypes.BOOL
-
-    _user32.GetAsyncKeyState.argtypes = [ctypes.c_int]
-    _user32.GetAsyncKeyState.restype = ctypes.c_short
-
-    _user32.MonitorFromWindow.argtypes = [wintypes.HWND, wintypes.DWORD]
-    _user32.MonitorFromWindow.restype = wintypes.HANDLE
-
-    _user32.MonitorFromPoint.argtypes = [wintypes.POINT, wintypes.DWORD]
-    _user32.MonitorFromPoint.restype = wintypes.HANDLE
-
-    _user32.GetMonitorInfoW.argtypes = [wintypes.HANDLE, ctypes.POINTER(MONITORINFOEXW)]
-    _user32.GetMonitorInfoW.restype = wintypes.BOOL
-
-
-_configure_user32()
-
-
-def _to_root_window(hwnd: int) -> int:
-    """Promote child/control HWND to top-level window HWND."""
-    if not hwnd:
-        return 0
-    root = int(_user32.GetAncestor(wintypes.HWND(hwnd), GA_ROOT) or 0)
-    return root if root else hwnd
-
-
-def _get_window_title(hwnd: int) -> str:
-    length = _user32.GetWindowTextLengthW(wintypes.HWND(hwnd))
-    buf = ctypes.create_unicode_buffer(length + 1)
-    _user32.GetWindowTextW(wintypes.HWND(hwnd), buf, length + 1)
-    title = buf.value.strip()
-    return title if title else f"HWND:{hwnd}"
-
-
-class WindowHighlighter(QDialog):
-    """Transparent overlay that draws a colored frame around a target window."""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
-        self.setAttribute(Qt.WA_TranslucentBackground, True)
-        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        self.setStyleSheet("background-color: transparent;")
-
-        self._border_color = Qt.red
-        self._border_width = 4
-
-    def set_target_rect(self, rect: QRect):
-        """Move and resize the overlay to surround the given rectangle."""
-        # Expand the rectangle to make room for the border
-        expanded = rect.adjusted(-self._border_width, -self._border_width,
-                                 self._border_width, self._border_width)
-        self.setGeometry(expanded)
-
-    def paintEvent(self, event):
-        """Draw a colored border around the overlay."""
-        from PySide6.QtGui import QPainter, QPen
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        pen = QPen(self._border_color, self._border_width)
-        painter.setPen(pen)
-        # Draw rectangle inset by half border width to keep border fully visible
-        half = self._border_width // 2
-        rect = self.rect().adjusted(half, half, -half, -half)
-        painter.drawRect(rect)
-
-
-class RegionSelector(QDialog):
-    """Fullscreen region selector on virtual desktop."""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setModal(True)
-        # 无边框置顶顶层窗口，用于覆盖整个屏幕进行区域选择
-        flags = Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Window
-        self.setWindowFlags(flags)
-        self.setCursor(Qt.CrossCursor)
-        self.setAttribute(Qt.WA_DeleteOnClose, False)
-        self.setGeometry(self._virtual_geometry())
-        self.setFocusPolicy(Qt.StrongFocus)
-
-        # 使用统一透明度（setWindowOpacity）替代 per-pixel alpha（WA_TranslucentBackground）
-        # 避免分层窗口在 exec() 模态事件循环中的消息处理问题
-        self.setStyleSheet("background-color: #1a1a1a;")
-        self.setWindowOpacity(0.25)
-
-        self._origin_global = QPoint()
-        self._rubber_band = QRubberBand(QRubberBand.Rectangle, self)
-        self._selected_rect: Optional[QRect] = None
-        self._selection_started = False
-        logger.debug("RegionSelector初始化完成")
-
-    def showEvent(self, event):
-        """窗口显示事件"""
-        logger.debug(f"RegionSelector.showEvent: 窗口显示，几何: {self.geometry()}")
-        super().showEvent(event)
-
-    def hideEvent(self, event):
-        """窗口隐藏事件"""
-        logger.debug("RegionSelector.hideEvent: 窗口隐藏")
-        super().hideEvent(event)
-
-    def eventFilter(self, obj, event):
-        """事件过滤器，监控窗口事件"""
-        from PySide6.QtCore import QEvent
-        if obj == self:
-            event_type = event.type()
-            if event_type == QEvent.Close:
-                logger.debug(f"RegionSelector.eventFilter: 接收到Close事件")
-            elif event_type == QEvent.WindowActivate:
-                logger.debug("RegionSelector.eventFilter: 窗口激活")
-            elif event_type == QEvent.WindowDeactivate:
-                logger.debug("RegionSelector.eventFilter: 窗口失活")
-            elif event_type == QEvent.FocusIn:
-                logger.debug("RegionSelector.eventFilter: 获得焦点")
-            elif event_type == QEvent.FocusOut:
-                logger.debug("RegionSelector.eventFilter: 失去焦点")
-        return super().eventFilter(obj, event)
-
-    @staticmethod
-    def _virtual_geometry() -> QRect:
-        """返回虚拟桌面的逻辑像素几何（所有屏幕的联合区域）"""
-        screens = QGuiApplication.screens()
-        if not screens:
-            return QRect(0, 0, 1920, 1080)
-        rect = screens[0].geometry()
-        for screen in screens[1:]:
-            rect = rect.united(screen.geometry())
-        return rect
-
-    def keyPressEvent(self, event):
-        logger.debug(f"RegionSelector.keyPressEvent: {event.key()}")
-        if event.key() == Qt.Key_Escape:
-            logger.debug("ESC键按下，取消区域选择")
-            self.reject()
-            return
-        super().keyPressEvent(event)
-
-    def mousePressEvent(self, event):
-        logger.debug(f"RegionSelector.mousePressEvent: button={event.button()}, pos={event.position()}, global={event.globalPosition()}")
-        if event.button() != Qt.LeftButton:
-            logger.debug("非左键按下，忽略")
-            return super().mousePressEvent(event)
-
-        # 标记选择已开始
-        self._selection_started = True
-        logger.debug("选择已开始")
-
-        # 记录全局起始点
-        self._origin_global = event.globalPosition().toPoint()
-        logger.debug(f"设置起始点: {self._origin_global}")
-
-        # 转换为本地坐标设置橡皮筋
-        origin_local = self.mapFromGlobal(self._origin_global)
-        logger.debug(f"起始点本地坐标: {origin_local}")
-
-        self._rubber_band.setGeometry(QRect(origin_local, QSize()))
-        self._rubber_band.show()
-        logger.debug("橡皮筋显示")
-
-    def mouseMoveEvent(self, event):
-        if not self._rubber_band.isVisible():
-            logger.debug("mouseMoveEvent: 橡皮筋不可见，忽略")
-            return super().mouseMoveEvent(event)
-
-        # 获取当前全局位置并转换为本地坐标
-        current_global = event.globalPosition().toPoint()
-        current_local = self.mapFromGlobal(current_global)
-        logger.debug(f"mouseMoveEvent: 当前位置 global={current_global}, local={current_local}")
-
-        # 构建矩形（从起始点到当前点）
-        origin_local = self.mapFromGlobal(self._origin_global)
-        rect = QRect(origin_local, current_local).normalized()
-        logger.debug(f"设置橡皮筋矩形: {rect}")
-        self._rubber_band.setGeometry(rect)
-        event.accept()
-
-    def mouseReleaseEvent(self, event):
-        logger.debug(f"RegionSelector.mouseReleaseEvent: button={event.button()}, pos={event.position()}, 橡皮筋可见: {self._rubber_band.isVisible()}")
-        if event.button() != Qt.LeftButton:
-            logger.debug("非左键释放，忽略")
-            return super().mouseReleaseEvent(event)
-
-        # 只有当橡皮筋可见（即已经开始选择）时才处理释放事件
-        if not self._rubber_band.isVisible():
-            logger.debug("橡皮筋不可见，忽略释放事件（可能是从按钮点击传递过来的释放事件）")
-            return super().mouseReleaseEvent(event)
-
-        # 获取释放时的全局位置
-        current_global = event.globalPosition().toPoint()
-        logger.debug(f"释放位置: {current_global}, 起始位置: {self._origin_global}")
-
-        # 直接使用全局坐标构建矩形（逻辑像素）
-        self._selected_rect = QRect(self._origin_global, current_global).normalized()
-        logger.debug(f"选择的矩形: {self._selected_rect}")
-
-        # 检查选择的区域是否有效（最小尺寸）
-        if self._selected_rect.width() < 5 or self._selected_rect.height() < 5:
-            logger.debug(f"选择的区域太小: {self._selected_rect.width()}x{self._selected_rect.height()}，忽略")
-            self._rubber_band.hide()
-            return
-
-        self._rubber_band.hide()
-        logger.debug("隐藏橡皮筋，接受选择")
-        self.accept()
-        event.accept()
-
-    def closeEvent(self, event):
-        logger.debug(f"RegionSelector.closeEvent - 选择矩形: {self._selected_rect}")
-        # 如果窗口被关闭而没有明确accept/reject，则reject
-        if self._selected_rect is None:
-            logger.debug("窗口被关闭，没有选择区域，自动reject")
-            self.reject()
-        super().closeEvent(event)
 
 
 
@@ -336,6 +83,9 @@ class ValidationDialog(QDialog):
         self._pick_cursor_owned = False
         # Window highlighter
         self._highlighter = None
+
+        # 文件对话框路径记忆
+        self._last_browse_path = str(Path.cwd())
 
         # Display settings
         self.label_font_size = 0.5
@@ -402,12 +152,15 @@ class ValidationDialog(QDialog):
         self.conf_spin.setSingleStep(0.01)
         self.conf_spin.setValue(self.model_manager.confidence_threshold)
         self.conf_spin.setDecimals(2)
-        self.conf_slider.valueChanged.connect(self._on_conf_slider)
-        self.conf_spin.valueChanged.connect(self._on_conf_spin)
         conf_row.addWidget(conf_label)
         conf_row.addWidget(self.conf_slider, 1)
         conf_row.addWidget(self.conf_spin)
         params_layout.addLayout(conf_row)
+
+        self._conf_binder = SliderSpinBoxBinder(
+            self.conf_slider, self.conf_spin, divider=100,
+            on_value_changed=self.model_manager.set_confidence_threshold
+        )
 
         iou_row = QHBoxLayout()
         iou_label = QLabel(tr("iou_threshold"))
@@ -419,12 +172,15 @@ class ValidationDialog(QDialog):
         self.iou_spin.setSingleStep(0.01)
         self.iou_spin.setValue(self.model_manager.iou_threshold)
         self.iou_spin.setDecimals(2)
-        self.iou_slider.valueChanged.connect(self._on_iou_slider)
-        self.iou_spin.valueChanged.connect(self._on_iou_spin)
         iou_row.addWidget(iou_label)
         iou_row.addWidget(self.iou_slider, 1)
         iou_row.addWidget(self.iou_spin)
         params_layout.addLayout(iou_row)
+
+        self._iou_binder = SliderSpinBoxBinder(
+            self.iou_slider, self.iou_spin, divider=100,
+            on_value_changed=self.model_manager.set_iou_threshold
+        )
 
         left_panel.addWidget(params_group)
 
@@ -441,12 +197,15 @@ class ValidationDialog(QDialog):
         self.font_size_spin.setSingleStep(0.1)
         self.font_size_spin.setValue(self.label_font_size)
         self.font_size_spin.setDecimals(1)
-        self.font_size_slider.valueChanged.connect(self._on_font_size_slider)
-        self.font_size_spin.valueChanged.connect(self._on_font_size_spin)
         font_row.addWidget(font_label)
         font_row.addWidget(self.font_size_slider, 1)
         font_row.addWidget(self.font_size_spin)
         display_layout.addLayout(font_row)
+
+        self._font_binder = SliderSpinBoxBinder(
+            self.font_size_slider, self.font_size_spin, divider=10,
+            on_value_changed=lambda v: setattr(self, 'label_font_size', v)
+        )
 
         self.show_conf_check = QCheckBox(tr("show_confidence"))
         self.show_conf_check.setChecked(self.show_confidence)
@@ -490,10 +249,11 @@ class ValidationDialog(QDialog):
         model_path, _ = QFileDialog.getOpenFileName(
             self,
             tr("select_pretrained_model_file"),
-            str(Path.cwd()),
+            self._last_browse_path,
             tr("model_file_filter"),
         )
         if model_path:
+            self._last_browse_path = str(Path(model_path).parent)
             if self.model_manager.load_model(model_path):
                 self._update_model_status()
             else:
@@ -528,6 +288,7 @@ class ValidationDialog(QDialog):
 
         self.picking_window = True
         self.btn_pick_window.setText(tr("picking_window"))
+        _user32 = get_user32()
         self._pick_prev_left_down = bool(_user32.GetAsyncKeyState(VK_LBUTTON) & 0x8000)
         self._pick_prev_right_down = bool(_user32.GetAsyncKeyState(VK_RBUTTON) & 0x8000)
         # Ignore button events for 300ms to swallow the release from clicking the "pick" button
@@ -551,7 +312,7 @@ class ValidationDialog(QDialog):
         self._cleanup_highlighter()
 
         if confirmed and self.current_hwnd:
-            title = _get_window_title(self.current_hwnd)
+            title = get_window_title(self.current_hwnd)
             self.window_info_label.setText(tr("window_selected").replace("{title}", title))
         else:
             # Clear selection if cancelled or not confirmed
@@ -559,10 +320,11 @@ class ValidationDialog(QDialog):
             self.window_info_label.setText(tr("window_not_selected"))
 
     def _update_window_pick(self):
+        _user32 = get_user32()
         # Read cursor-under-window globally, not limited by dialog focus.
         point = wintypes.POINT(QCursor.pos().x(), QCursor.pos().y())
         hwnd = int(_user32.WindowFromPoint(point) or 0)
-        hwnd = _to_root_window(hwnd)
+        hwnd = to_root_window(hwnd)
 
         own_hwnd = int(self.winId())
         valid_candidate = False
@@ -577,7 +339,7 @@ class ValidationDialog(QDialog):
         if valid_candidate:
             if hwnd != self.current_hwnd:
                 self.current_hwnd = hwnd
-                title = _get_window_title(hwnd)
+                title = get_window_title(hwnd)
                 self.window_info_label.setText(tr("window_selected").replace("{title}", title))
         else:
             if self.current_hwnd is not None:
@@ -622,12 +384,6 @@ class ValidationDialog(QDialog):
         # Convert physical pixels to logical pixels for Qt
         logical_rect = self._physical_to_logical_rect(physical_rect)
 
-        # Debug output
-        logger.debug(f"Window highlighter - HWND: {hwnd}")
-        logger.debug(f"  Physical rect: {physical_rect}")
-        logger.debug(f"  Logical rect: {logical_rect}")
-        logger.debug(f"  Screen DPR: {QGuiApplication.primaryScreen().devicePixelRatio() if QGuiApplication.primaryScreen() else 1.0}")
-
         # Create or update highlighter
         if self._highlighter is None:
             self._highlighter = WindowHighlighter()
@@ -641,21 +397,15 @@ class ValidationDialog(QDialog):
             self._highlighter = None
 
     def _pick_region(self):
-        logger.debug("_pick_region 开始，创建区域选择器")
-
         # 创建区域选择器
         selector = RegionSelector(self)
-        logger.debug(f"RegionSelector创建完成，父窗口: {self}, selector窗口: {selector}")
 
         try:
-            logger.debug("显示RegionSelector (exec)")
             result = selector.exec()
-            logger.debug(f"RegionSelector.exec返回结果: {result}")
 
             if result == QDialog.Accepted:
                 rect = selector._selected_rect
                 if rect and rect.width() > 1 and rect.height() > 1:
-                    logger.debug(f"区域选择完成: {rect.x()},{rect.y()} {rect.width()}x{rect.height()}")
                     self.current_rect = rect
                     self.region_info_label.setText(
                         tr("region_selected").replace(
@@ -663,16 +413,11 @@ class ValidationDialog(QDialog):
                         )
                     )
                 else:
-                    logger.debug("选择的区域无效")
-            else:
-                logger.debug("区域选择取消")
+                    logger.info("选择的区域无效")
         except Exception as e:
             logger.exception(f"区域选择过程中发生异常: {e}")
         finally:
-            logger.debug("区域选择过程结束，清理资源")
-            # 确保选择器窗口被关闭
             selector.close()
-            # 确保验证窗口重新获取焦点
             self.raise_()
             self.activateWindow()
 
@@ -680,11 +425,12 @@ class ValidationDialog(QDialog):
         image_path, _ = QFileDialog.getOpenFileName(
             self,
             tr("select_image_file_dialog_title"),
-            str(Path.cwd()),
+            self._last_browse_path,
             "Images (*.png *.jpg *.jpeg *.bmp *.tiff *.tif *.gif)",
         )
         if image_path:
             self.image_path_edit.setText(image_path)
+            self._last_browse_path = str(Path(image_path).parent)
 
     def _toggle_detect(self):
         if self.is_running:
@@ -773,6 +519,7 @@ class ValidationDialog(QDialog):
 
     def _get_screen_bounds(self) -> Tuple[int, int, int, int]:
         """获取虚拟桌面的物理边界坐标（所有显示器的联合区域）"""
+        _user32 = get_user32()
         # 使用Windows API获取虚拟屏幕的边界
         try:
             x = _user32.GetSystemMetrics(SM_XVIRTUALSCREEN)
@@ -885,6 +632,7 @@ class ValidationDialog(QDialog):
         return logical_rect.left(), logical_rect.top(), logical_rect.right(), logical_rect.bottom()
 
     def _window_rect(self, hwnd: int) -> Optional[Tuple[int, int, int, int]]:
+        _user32 = get_user32()
         if not _user32.IsWindow(wintypes.HWND(hwnd)):
             return None
         rect = wintypes.RECT()
@@ -900,7 +648,7 @@ class ValidationDialog(QDialog):
                 # No window selected
                 return None
             # Check if window is still valid
-            if not _user32.IsWindow(wintypes.HWND(self.current_hwnd)):
+            if not get_user32().IsWindow(wintypes.HWND(self.current_hwnd)):
                 # Window no longer exists
                 self.current_hwnd = None
                 self.window_info_label.setText(tr("window_not_selected"))
@@ -1022,48 +770,6 @@ class ValidationDialog(QDialog):
         if target_size.width() > 0 and target_size.height() > 0:
             pix = pix.scaled(target_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         self.preview_label.setPixmap(pix)
-
-    def _on_conf_slider(self, value: int):
-        conf_value = value / 100.0
-        self.conf_spin.blockSignals(True)
-        self.conf_spin.setValue(conf_value)
-        self.conf_spin.blockSignals(False)
-        self.model_manager.set_confidence_threshold(conf_value)
-
-    def _on_conf_spin(self, value: float):
-        slider_value = int(value * 100)
-        self.conf_slider.blockSignals(True)
-        self.conf_slider.setValue(slider_value)
-        self.conf_slider.blockSignals(False)
-        self.model_manager.set_confidence_threshold(value)
-
-    def _on_iou_slider(self, value: int):
-        iou_value = value / 100.0
-        self.iou_spin.blockSignals(True)
-        self.iou_spin.setValue(iou_value)
-        self.iou_spin.blockSignals(False)
-        self.model_manager.set_iou_threshold(iou_value)
-
-    def _on_iou_spin(self, value: float):
-        slider_value = int(value * 100)
-        self.iou_slider.blockSignals(True)
-        self.iou_slider.setValue(slider_value)
-        self.iou_slider.blockSignals(False)
-        self.model_manager.set_iou_threshold(value)
-
-    def _on_font_size_slider(self, value: int):
-        font_val = value / 10.0
-        self.font_size_spin.blockSignals(True)
-        self.font_size_spin.setValue(font_val)
-        self.font_size_spin.blockSignals(False)
-        self.label_font_size = font_val
-
-    def _on_font_size_spin(self, value: float):
-        slider_val = int(value * 10)
-        self.font_size_slider.blockSignals(True)
-        self.font_size_slider.setValue(slider_val)
-        self.font_size_slider.blockSignals(False)
-        self.label_font_size = value
 
     def _on_show_conf_toggled(self, checked: bool):
         self.show_confidence = checked

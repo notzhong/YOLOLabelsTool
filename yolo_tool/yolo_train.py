@@ -198,7 +198,7 @@ class YOLOTrainer(QObject):
                 'degrees': self.config.get('degrees', 0.0),
                 'shear': self.config.get('shear', 0.0),
                 'perspective': self.config.get('perspective', 0.0),
-                'flipud': self.config.get('flipud', 0.0),
+                'flip_up_down': self.config.get('flip_up_down', 0.0),
                 'project': self.config.get('output_dir'),
                 'name': self.config.get('run_name', 'train'),
                 'exist_ok': True,  # 允许覆盖现有运行
@@ -383,7 +383,7 @@ class YOLOTrainer(QObject):
             'degrees': 0.0,
             'shear': 0.0,
             'perspective': 0.0,
-            'flipud': 0.0,
+            'flip_up_down': 0.0,
             'resume': False,
             # 新增优化器参数
             'weight_decay': 0.0005,

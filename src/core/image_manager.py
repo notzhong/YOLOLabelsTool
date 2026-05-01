@@ -4,6 +4,7 @@
 
 import os
 from pathlib import Path
+from collections import OrderedDict
 from typing import List, Optional, Tuple, Dict
 import cv2
 import numpy as np
@@ -21,8 +22,9 @@ class ImageManager:
     def __init__(self):
         self._image_paths: List[str] = []
         self._current_folder: Optional[str] = None
-        self._image_cache: Dict[str, Tuple[np.ndarray, Tuple[int, int]]] = {}
-        self._max_cache_size = 50  # 最大缓存图片数
+        # LRU 缓存：OrderedDict，访问时移到末尾
+        self._image_cache: OrderedDict[str, Tuple[np.ndarray, Tuple[int, int]]] = OrderedDict()
+        self._max_cache_size = 50
         self.logger = get_logger_simple(__name__)
         
     def load_folder(self, folder_path: str) -> bool:
@@ -80,9 +82,10 @@ class ImageManager:
         if not os.path.exists(image_path):
             return None
         
-        # 检查缓存
+        # 检查缓存（LRU：命中时移到末尾）
         if use_cache and image_path in self._image_cache:
             img_array, _ = self._image_cache[image_path]
+            self._image_cache.move_to_end(image_path)
             return img_array.copy()
         
         try:
@@ -115,13 +118,11 @@ class ImageManager:
         return None
     
     def _update_cache(self, image_path: str, img_array: np.ndarray, size: Tuple[int, int]):
-        """更新图片缓存"""
-        # 如果缓存已满，移除最旧的图片
+        """更新图片缓存（LRU：淘汰最久未访问的条目）"""
+        # 如果缓存已满，移除最旧的图片（OrderedDict 的第一个元素）
         if len(self._image_cache) >= self._max_cache_size:
-            # 简单策略：移除第一个缓存项
-            oldest_key = next(iter(self._image_cache))
-            del self._image_cache[oldest_key]
-        
+            self._image_cache.popitem(last=False)
+
         # 添加新缓存
         self._image_cache[image_path] = (img_array.copy(), size)
     

@@ -188,7 +188,21 @@ class ModelManager:
     def is_model_loaded(self) -> bool:
         """检查模型是否已加载"""
         return self.model_loaded
-    
+
+    def unload_model(self):
+        """卸载模型并释放资源"""
+        if self.model is not None:
+            try:
+                # 释放模型
+                del self.model
+            except Exception:
+                pass
+            self.model = None
+        self.model_path = None
+        self.model_loaded = False
+        self.class_names = {}
+        self.logger.info("模型已卸载")
+
     def convert_to_annotations(self, detections: List[Dict[str, Any]]) -> List[Annotation]:
         """将检测结果转换为Annotation对象列表"""
         annotations = []

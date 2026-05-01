@@ -20,12 +20,10 @@ class TranslationManager:
     def __init__(self):
         self.translations = {}
         self.current_language = "zh_CN"
+        self._available_languages = ['zh_CN', 'en_US']
 
-        # 初始化翻译字典结构
-        self.translations = {}
-
-        # 加载外部翻译文件
-        self.load_translation_files()
+        # 加载所有语言翻译文件
+        self.load_all_translations()
 
     @classmethod
     def instance(cls):
@@ -34,44 +32,42 @@ class TranslationManager:
             cls._instance = cls()
         return cls._instance
 
-    def load_translation_files(self):
-        """从文件加载翻译"""
+    def load_all_translations(self):
+        """从文件加载所有语言的翻译"""
         translation_dir = Path("translations")
         if not translation_dir.exists():
             logger.warning(f"翻译目录不存在: {translation_dir}")
             return
 
-        # 尝试加载当前语言的翻译文件
-        lang_file = translation_dir / f"{self.current_language}.ini"
-        if not lang_file.exists():
-            logger.warning(f"翻译文件不存在: {lang_file}")
-            return
+        for lang in self._available_languages:
+            lang_file = translation_dir / f"{lang}.ini"
+            if not lang_file.exists():
+                logger.warning(f"翻译文件不存在: {lang_file}")
+                continue
 
-        try:
-            config = configparser.ConfigParser()
-            # 读取时保持键的大小写
-            config.optionxform = lambda option: option
-            config.read(lang_file, encoding='utf-8')
+            try:
+                config = configparser.ConfigParser()
+                config.optionxform = lambda option: option
+                config.read(lang_file, encoding='utf-8')
 
-            if 'translations' not in config:
-                logger.error(f"翻译文件格式错误，缺少 [translations] 部分: {lang_file}")
-                return
+                if 'translations' not in config:
+                    logger.error(f"翻译文件格式错误，缺少 [translations] 部分: {lang_file}")
+                    continue
 
-            # 清空当前语言的翻译
-            if self.current_language not in self.translations:
-                self.translations[self.current_language] = {}
+                self.translations[lang] = {}
+                for key, value in config['translations'].items():
+                    self.translations[lang][key] = value
 
-            # 加载翻译
-            for key, value in config['translations'].items():
-                self.translations[self.current_language][key] = value
+                logger.info(f"成功加载翻译文件: {lang_file}, 包含 {len(self.translations[lang])} 条翻译")
+            except Exception as e:
+                logger.error(f"加载翻译文件失败 {lang_file}: {e}")
 
-            logger.info(f"成功加载翻译文件: {lang_file}, 包含 {len(self.translations[self.current_language])} 条翻译")
-
-        except Exception as e:
-            logger.error(f"加载翻译文件失败: {e}")
+    def load_translation_files(self):
+        """兼容旧接口：仅重载当前语言"""
+        self.load_all_translations()
 
     def tr(self, key: str, default: Optional[str] = None) -> str:
-        """翻译函数"""
+        """翻译函数（回退链: 当前语言 → en_US → default/key）"""
         # 如果当前语言没有翻译数据，尝试加载
         if self.current_language not in self.translations or not self.translations[self.current_language]:
             self.load_translation_files()
@@ -81,6 +77,11 @@ class TranslationManager:
             lang_translations = self.translations[self.current_language]
             if key in lang_translations:
                 return lang_translations[key]
+
+        # 回退到 en_US
+        if self.current_language != 'en_US' and 'en_US' in self.translations:
+            if key in self.translations['en_US']:
+                return self.translations['en_US'][key]
 
         # 返回默认值或键本身
         return default or key
@@ -110,21 +111,24 @@ class TranslationManager:
         return self.current_language
 
     def save_translation_file(self, language: str):
-        """保存翻译文件到INI"""
+        """保存翻译文件到INI（合并现有翻译，不覆盖）"""
         translation_dir = Path("translations")
         translation_dir.mkdir(parents=True, exist_ok=True)
 
         lang_file = translation_dir / f"{language}.ini"
-        translations = self.translations.get(language, {})
+        new_translations = self.translations.get(language, {})
 
         try:
+            # 先读取现有翻译
             config = configparser.ConfigParser()
-            config['translations'] = {}
+            config.optionxform = lambda option: option
+            config.read(lang_file, encoding='utf-8')
 
-            # 按字母顺序排序
-            sorted_items = sorted(translations.items(), key=lambda x: x[0])
+            if 'translations' not in config:
+                config['translations'] = {}
 
-            for key, value in sorted_items:
+            # 合并新翻译到现有翻译（覆盖同键）
+            for key, value in new_translations.items():
                 config['translations'][key] = value
 
             with open(lang_file, 'w', encoding='utf-8') as f:

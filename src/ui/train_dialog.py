@@ -47,6 +47,9 @@ class TrainDialog(QDialog):
         
         # 配置修改标志
         self.config_modified = False
+
+        # 文件对话框路径记忆
+        self._last_browse_path = str(Path.cwd())
         
         self.init_ui()
         self.load_config_to_ui()
@@ -366,11 +369,11 @@ class TrainDialog(QDialog):
         self.perspective_spin.setValue(0.0)
         augment_layout.addRow(tr("perspective_transformation_strength_label"), self.perspective_spin)
         
-        self.flipud_spin = QDoubleSpinBox()
-        self.flipud_spin.setRange(0.0, 1.0)
-        self.flipud_spin.setSingleStep(0.1)
-        self.flipud_spin.setValue(0.0)
-        augment_layout.addRow(tr("flip_up_down_probability_label"), self.flipud_spin)
+        self.flip_up_down_spin = QDoubleSpinBox()
+        self.flip_up_down_spin.setRange(0.0, 1.0)
+        self.flip_up_down_spin.setSingleStep(0.1)
+        self.flip_up_down_spin.setValue(0.0)
+        augment_layout.addRow(tr("flip_up_down_probability_label"), self.flip_up_down_spin)
         
         # 添加HSV增强参数
         self.hsv_h_spin = QDoubleSpinBox()
@@ -514,26 +517,26 @@ class TrainDialog(QDialog):
         # 启用/禁用所有增强参数控件
         for widget in [self.mixup_spin, self.degrees_spin, 
                        self.shear_spin, self.perspective_spin, 
-                       self.flipud_spin]:
+                       self.flip_up_down_spin]:
             widget.setEnabled(checked)
     
     def _browse_open_file(self, target_edit: QLineEdit, title_key: str, file_filter: str):
         """通用文件浏览方法"""
-        current_dir = Path.cwd()
         file_path, _ = QFileDialog.getOpenFileName(
-            self, tr(title_key), str(current_dir), file_filter
+            self, tr(title_key), self._last_browse_path, file_filter
         )
         if file_path:
             target_edit.setText(file_path)
+            self._last_browse_path = str(Path(file_path).parent)
 
     def _browse_directory(self, target_edit: QLineEdit, title_key: str):
         """通用目录浏览方法"""
-        current_dir = Path.cwd()
         dir_path = QFileDialog.getExistingDirectory(
-            self, tr(title_key), str(current_dir)
+            self, tr(title_key), self._last_browse_path
         )
         if dir_path:
             target_edit.setText(dir_path)
+            self._last_browse_path = dir_path
 
     def browse_model_file(self):
         self._browse_open_file(self.model_path_edit, "browse_model_file_dialog", "PyTorch模型文件 (*.pt)")
@@ -549,18 +552,18 @@ class TrainDialog(QDialog):
     
     def save_config(self):
         """保存训练配置到文件"""
-        current_dir = Path.cwd()
         config_path, _ = QFileDialog.getSaveFileName(
             self, tr("save_config_dialog_title"),
-            str(current_dir),
+            self._last_browse_path,
             "JSON文件 (*.json)"
         )
         
         if config_path:
-            # 确保文件扩展名
+            # 保存配置
             if not config_path.lower().endswith('.json'):
                 config_path += '.json'
-            
+            self._last_browse_path = str(Path(config_path).parent)
+
             # 收集当前UI配置
             config = self.collect_config_from_ui()
             
@@ -575,10 +578,9 @@ class TrainDialog(QDialog):
     
     def load_config(self):
         """从文件加载训练配置"""
-        current_dir = Path.cwd()
         config_path, _ = QFileDialog.getOpenFileName(
             self, tr("load_config_dialog_title"),
-            str(current_dir),
+            self._last_browse_path,
             "JSON文件 (*.json)"
         )
         
@@ -643,7 +645,7 @@ class TrainDialog(QDialog):
         config['degrees'] = self.degrees_spin.value()
         config['shear'] = self.shear_spin.value()
         config['perspective'] = self.perspective_spin.value()
-        config['flipud'] = self.flipud_spin.value()
+        config['flip_up_down'] = self.flip_up_down_spin.value()
         config['hsv_h'] = self.hsv_h_spin.value()
         config['hsv_s'] = self.hsv_s_spin.value()
         config['hsv_v'] = self.hsv_v_spin.value()
@@ -734,7 +736,7 @@ class TrainDialog(QDialog):
         self.degrees_spin.setValue(self.config.get('degrees', 0.0))
         self.shear_spin.setValue(self.config.get('shear', 0.0))
         self.perspective_spin.setValue(self.config.get('perspective', 0.0))
-        self.flipud_spin.setValue(self.config.get('flipud', 0.0))
+        self.flip_up_down_spin.setValue(self.config.get('flip_up_down', 0.0))
         self.hsv_h_spin.setValue(self.config.get('hsv_h', 0.015))
         self.hsv_s_spin.setValue(self.config.get('hsv_s', 0.7))
         self.hsv_v_spin.setValue(self.config.get('hsv_v', 0.4))
@@ -824,8 +826,7 @@ class TrainDialog(QDialog):
                             self.log_message(f"已从文件加载上次配置: {config_path}")
         except Exception as e:
             # 加载失败时不中断程序
-            from src.utils.i18n import tr
-            logger.error(tr("load_last_config_failed").replace("{error}", str(e)))
+            logger.error(f"加载上次训练配置失败: {e}")
     
     def save_last_config(self):
         """保存当前配置到配置文件"""
@@ -878,7 +879,7 @@ class TrainDialog(QDialog):
             self.degrees_spin,
             self.shear_spin,
             self.perspective_spin,
-            self.flipud_spin,
+            self.flip_up_down_spin,
             self.lr0_spin,
             # 新增的数值控件
             self.hsv_h_spin,
