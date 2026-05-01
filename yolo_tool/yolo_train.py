@@ -172,10 +172,10 @@ class YOLOTrainer(QObject):
             self.should_stop = False
             self.training_started.emit()
             
-            # 加载模型
-            model_path = self.config.get('model_path')
+            # 加载模型（恢复训练时加载 checkpoint，而非原始预训练模型）
             resume = self.config.get('resume', False)
-            
+            model_path = resume if (isinstance(resume, str) and resume) else self.config.get('model_path')
+
             self.log_message.emit(f"加载模型: {model_path}")
             self.model = YOLO(model_path)
 
@@ -213,7 +213,7 @@ class YOLOTrainer(QObject):
                 'project': self.config.get('output_dir'),
                 'name': self.config.get('run_name', 'train'),
                 'exist_ok': True,  # 允许覆盖现有运行
-                'resume': resume,
+                'resume': bool(resume),
                 # 新增优化器参数
                 'weight_decay': self.config.get('weight_decay', 0.0005),
                 'momentum': self.config.get('momentum', 0.937),

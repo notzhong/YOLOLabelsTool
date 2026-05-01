@@ -30,6 +30,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from PIL import Image, ImageDraw, ImageFont
+
 from src.utils.i18n import tr
 from src.utils.logger import get_logger_simple
 from src.utils.widget_helpers import SliderSpinBoxBinder
@@ -42,6 +44,58 @@ from src.utils.win32_helpers import (
 )
 
 logger = get_logger_simple(__name__)
+
+# Unicode font fallback chain for cv2.putText (which can't handle Chinese)
+_UNICODE_FONT_CACHE = [None]
+
+def _get_unicode_font(size: int) -> ImageFont.FreeTypeFont:
+    """Get a PIL font capable of rendering Unicode (Chinese) text."""
+    if _UNICODE_FONT_CACHE[0] is not None and _UNICODE_FONT_CACHE[0].size == size:
+        return _UNICODE_FONT_CACHE[0]
+    candidates = [
+        "C:/Windows/Fonts/msyh.ttc",          # Microsoft YaHei
+        "C:/Windows/Fonts/simhei.ttf",         # SimHei
+        "C:/Windows/Fonts/msyhbd.ttc",         # Microsoft YaHei Bold
+        "C:/Windows/Fonts/yahei.ttf",          # YaHei fallback
+    ]
+    font = None
+    for path in candidates:
+        if Path(path).exists():
+            try:
+                font = ImageFont.truetype(path, size)
+                break
+            except Exception:
+                continue
+    if font is None:
+        font = ImageFont.load_default()
+    _UNICODE_FONT_CACHE[0] = font
+    return font
+
+
+def _draw_unicode_text(img: np.ndarray, text: str, pos, font_scale: float,
+                       color, thickness: int):
+    """Draw text (including Unicode) on an OpenCV BGR image using Pillow."""
+    if not text:
+        return
+    font_size = max(10, int(font_scale * 20))
+    font = _get_unicode_font(font_size)
+
+    # Convert OpenCV BGR to PIL RGB
+    rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    pil_img = Image.fromarray(rgb)
+    draw = ImageDraw.Draw(pil_img)
+
+    # Compute text size for positioning
+    bbox = draw.textbbox((0, 0), text, font=font)
+    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+    # Draw text (with background for readability)
+    tx, ty = pos[0], pos[1] - th - 2
+    draw.rectangle([tx - 1, ty - 1, tx + tw + 1, ty + th + 1], fill=(0, 255, 0))
+    draw.text((tx, ty), text, font=font, fill=(0, 0, 0))
+
+    # Convert back to BGR
+    img[:, :, :] = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
 
 try:
     import dxcam
@@ -756,11 +810,10 @@ class ValidationDialog(QDialog):
                 label += f":{conf:.2f}"
 
             cv2.rectangle(vis, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            cv2.putText(
+            _draw_unicode_text(
                 vis,
                 label,
-                (x, max(0, y - 4)),
-                cv2.FONT_HERSHEY_SIMPLEX,
+                (x, y),
                 self.label_font_size,
                 (0, 255, 0),
                 max(1, int(self.label_font_size * 2)),
