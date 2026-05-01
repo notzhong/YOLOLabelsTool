@@ -230,6 +230,11 @@ class AnnotationRectItem(QGraphicsRectItem):
             if class_info:
                 self.color = QColor(*class_info["color"])
                 self.update_appearance()
+                # 同步更新关联的文本标签
+                text_item = getattr(self, 'associated_text_item', None)
+                if text_item is not None:
+                    text_item.setPlainText(class_info["name"])
+                    text_item.setDefaultTextColor(self.color)
 
         self.canvas.annotation_changed.emit()
 
@@ -255,8 +260,10 @@ class AnnotationCanvas(QGraphicsView):
         self._scene = QGraphicsScene(self)
         self.setScene(self._scene)
 
-        # 鼠标交互默认使用 ScrollHandDrag 以便滚动
-        self.setDragMode(QGraphicsView.ScrollHandDrag)
+        # 默认使用 NoDrag，左键绘制/选择，中键平移
+        self.setDragMode(QGraphicsView.NoDrag)
+        self.setCursor(Qt.CrossCursor)
+        self._panning = False
 
         # 状态
         self.class_manager = None
@@ -369,6 +376,7 @@ class AnnotationCanvas(QGraphicsView):
             annotation, color, self
         )
         rect_item.is_annotation_item = True
+        rect_item.associated_text_item = None  # 稍后设置
         self._scene.addItem(rect_item)
 
         text_item = QGraphicsTextItem(class_name)
@@ -376,6 +384,7 @@ class AnnotationCanvas(QGraphicsView):
         text_item.setPos(annotation.x, annotation.y - 20)
         text_item.is_annotation_item = True
         text_item.associated_rect_item = rect_item
+        rect_item.associated_text_item = text_item
         font = QFont()
         font.setPointSize(10)
         text_item.setFont(font)
@@ -430,6 +439,14 @@ class AnnotationCanvas(QGraphicsView):
     # ---- 事件重写 ----
 
     def mousePressEvent(self, event: QMouseEvent):
+        if event.button() == Qt.MiddleButton:
+            # 中键平移（手动实现，ScrollHandDrag 只响应左键）
+            self._panning = True
+            self._pan_start_pos = event.pos()
+            self.viewport().setCursor(Qt.ClosedHandCursor)
+            event.accept()
+            return
+
         if event.button() == Qt.LeftButton:
             scene_pos = self.mapToScene(event.pos())
 
@@ -444,19 +461,28 @@ class AnnotationCanvas(QGraphicsView):
             self._drawing_start = scene_pos
             self._drawing_end = scene_pos
 
-            self.viewport().setCursor(Qt.CrossCursor)
-            # 暂时禁用 ScrollHandDrag 避免干扰绘制
-            self.setDragMode(QGraphicsView.NoDrag)
-
             self._temp_rect_item = QGraphicsRectItem()
             self._temp_rect_item.setPen(QPen(Qt.red, 2, Qt.DashLine))
             self._scene.addItem(self._temp_rect_item)
 
             event.accept()
-        else:
-            super().mousePressEvent(event)
+            return
+
+        super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent):
+        if self._panning:
+            delta = event.pos() - self._pan_start_pos
+            self._pan_start_pos = event.pos()
+            self.horizontalScrollBar().setValue(
+                self.horizontalScrollBar().value() - delta.x()
+            )
+            self.verticalScrollBar().setValue(
+                self.verticalScrollBar().value() - delta.y()
+            )
+            event.accept()
+            return
+
         scene_pos = self.mapToScene(event.pos())
 
         if self._is_drawing and self._temp_rect_item:
@@ -474,9 +500,15 @@ class AnnotationCanvas(QGraphicsView):
             super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event: QMouseEvent):
+        if event.button() == Qt.MiddleButton and self._panning:
+            self._panning = False
+            self.setCursor(Qt.CrossCursor)
+            self.viewport().setCursor(Qt.CrossCursor)
+            event.accept()
+            return
+
         if event.button() == Qt.LeftButton and self._is_drawing:
             self._is_drawing = False
-            self.setDragMode(QGraphicsView.ScrollHandDrag)
 
             if self._temp_rect_item:
                 self._scene.removeItem(self._temp_rect_item)
@@ -501,8 +533,9 @@ class AnnotationCanvas(QGraphicsView):
             self._drawing_start = None
             self._drawing_end = None
             event.accept()
-        else:
-            super().mouseReleaseEvent(event)
+            return
+
+        super().mouseReleaseEvent(event)
 
     def wheelEvent(self, event: QWheelEvent):
         if event.modifiers() & Qt.ControlModifier:

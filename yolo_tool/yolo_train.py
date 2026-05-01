@@ -23,8 +23,14 @@ class ProgressCallback:
         self.trainer = trainer
     
     def on_train_epoch_end(self, trainer):
-        """在每个训练epoch结束时调用"""
+        """在每个训练epoch结束时调用，同时检查是否需要停止训练"""
         try:
+            # 检查是否需要停止训练
+            if self.trainer.should_stop:
+                trainer.stop = True
+                self.trainer.log_message.emit("用户请求停止，将在当前epoch完成后停止训练")
+                return
+
             # 获取当前epoch和指标
             epoch = trainer.epoch
             
@@ -58,8 +64,13 @@ class ProgressCallback:
             self.trainer.log_message.emit(f"回调错误: {str(e)[:100]}")
     
     def on_train_batch_end(self, trainer):
-        """在每个训练批次结束时调用，用于获取更实时的损失数据"""
+        """在每个训练批次结束时调用，用于获取更实时的损失数据，同时检查是否需要停止训练"""
         try:
+            # 检查是否需要停止训练
+            if self.trainer.should_stop:
+                trainer.stop = True
+                return
+
             # 获取当前epoch
             epoch = trainer.epoch
             
@@ -239,29 +250,29 @@ class YOLOTrainer(QObject):
             
             # 执行训练
             results = self.model.train(**train_args)
-            
+
             if self.should_stop:
                 self.log_message.emit("训练被用户停止")
                 self.training_stopped.emit()
-                success = False
-                message = "训练被用户停止"
-                
+
                 # 清理内存
                 self._cleanup_resources()
+                self.is_training = False
+                return  # 提前返回，避免触发 training_finished 覆盖停止状态
+
+            # 获取最佳权重路径
+            best_model_path = Path(train_args['project']) / train_args['name'] / 'weights' / 'best.pt'
+            if best_model_path.exists():
+                message = f"训练完成！最佳模型保存于: {best_model_path}"
             else:
-                # 获取最佳权重路径
-                best_model_path = Path(train_args['project']) / train_args['name'] / 'weights' / 'best.pt'
-                if best_model_path.exists():
-                    message = f"训练完成！最佳模型保存于: {best_model_path}"
-                else:
-                    message = "训练完成"
-                
-                self.log_message.emit("训练完成")
-                success = True
-                
-                # 清理内存
-                self._cleanup_resources()
-            
+                message = "训练完成"
+
+            self.log_message.emit("训练完成")
+            success = True
+
+            # 清理内存
+            self._cleanup_resources()
+
             self.is_training = False
             self.training_finished.emit(success, message)
             

@@ -68,6 +68,7 @@ class MainWindow(QMainWindow):
         self.selected_class_id: int = 0
         # 统计缓存移至 StatsPanel._stats_counts
         self._last_browse_path = str(Path.cwd())  # 上次浏览路径
+        self._last_folder_path = ""  # 上次打开的图片文件夹
 
         # 加载设置
         self.load_settings()
@@ -86,7 +87,12 @@ class MainWindow(QMainWindow):
         
         # 更新类别列表
         self.update_class_list()
-        
+
+        # 自动加载上次打开的文件夹
+        if self._last_folder_path and Path(self._last_folder_path).exists():
+            self.logger.info(f"自动加载上次打开的文件夹: {self._last_folder_path}")
+            self.load_image_folder_by_path(self._last_folder_path)
+
         # 设置窗口属性
         self.setWindowTitle(tr("yolo_label_tool"))
         self.resize(1200, 800)
@@ -103,23 +109,23 @@ class MainWindow(QMainWindow):
         main_layout.setSpacing(0)
         
         # 创建分割器
-        splitter = QSplitter(Qt.Horizontal)
-        main_layout.addWidget(splitter)
+        self._main_splitter = QSplitter(Qt.Horizontal)
+        main_layout.addWidget(self._main_splitter)
         
         # 左侧面板 - 图片列表
         left_panel = self.create_left_panel()
-        splitter.addWidget(left_panel)
+        self._main_splitter.addWidget(left_panel)
         
         # 中间面板 - 图片显示
         center_panel = self.create_center_panel()
-        splitter.addWidget(center_panel)
+        self._main_splitter.addWidget(center_panel)
         
         # 右侧面板 - 类别管理
         right_panel = self.create_right_panel()
-        splitter.addWidget(right_panel)
+        self._main_splitter.addWidget(right_panel)
         
-        # 设置分割器初始大小
-        splitter.setSizes([200, 600, 200])
+        # 设置分割器初始大小（后续会被配置覆盖）
+        self._main_splitter.setSizes(self._load_splitter_sizes('main_splitter', [200, 600, 200]))
         
         # 加载QSS样式
         self.load_qss_style()
@@ -263,6 +269,10 @@ class MainWindow(QMainWindow):
         self.btn_load_folder = QPushButton(tr("load_folder"))
         self.btn_load_folder.clicked.connect(self.load_image_folder)
         btn_layout.addWidget(self.btn_load_folder)
+
+        self.btn_close_folder = QPushButton(tr("close_folder"))
+        self.btn_close_folder.clicked.connect(self.close_image_folder)
+        btn_layout.addWidget(self.btn_close_folder)
         
         self.btn_prev = QPushButton(tr("previous_image"))
         self.btn_prev.clicked.connect(self.prev_image)
@@ -350,8 +360,8 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.right_panel_title_label)
         
         # 创建垂直分割器，允许用户调整各区域高度
-        splitter = QSplitter(Qt.Vertical)
-        layout.addWidget(splitter, 1)  # 第二个参数为1表示填充剩余空间
+        self._right_splitter = QSplitter(Qt.Vertical)
+        layout.addWidget(self._right_splitter, 1)  # 第二个参数为1表示填充剩余空间
         
         # 类别列表 - 保存引用
         self.class_group = QGroupBox(tr("annotation_classes"))
@@ -382,7 +392,7 @@ class MainWindow(QMainWindow):
         
         class_layout.addLayout(class_btn_layout)
         
-        splitter.addWidget(self.class_group)
+        self._right_splitter.addWidget(self.class_group)
         
         # 标注操作 - 保存引用
         self.annotation_group = QGroupBox(tr("annotation_operations"))
@@ -398,7 +408,7 @@ class MainWindow(QMainWindow):
         
         annotation_layout.addStretch()
         
-        splitter.addWidget(self.annotation_group)
+        self._right_splitter.addWidget(self.annotation_group)
         
         # 导出操作 - 保存引用
         self.export_group = QGroupBox(tr("data_export"))
@@ -414,12 +424,12 @@ class MainWindow(QMainWindow):
         
         export_layout.addStretch()
         
-        splitter.addWidget(self.export_group)
+        self._right_splitter.addWidget(self.export_group)
         
         # 标注统计面板
         self.stats_panel = StatsPanel()
         self.stats_panel.refresh_requested.connect(self._on_stats_refresh)
-        splitter.addWidget(self.stats_panel)
+        self._right_splitter.addWidget(self.stats_panel)
         
         # 模型信息面板（默认隐藏）
         self.model_info_panel = ModelInfoPanel()
@@ -430,23 +440,37 @@ class MainWindow(QMainWindow):
         self.model_info_panel.train_requested.connect(self.train_model)
         self.model_info_panel.refresh_requested.connect(self._on_model_info_refresh)
         
-        splitter.addWidget(self.model_info_panel)
+        self._right_splitter.addWidget(self.model_info_panel)
 
         # 设置分割器的初始大小比例
-        splitter.setSizes([150, 100, 100, 200, 150])
+        self._right_splitter.setSizes(self._load_splitter_sizes('right_splitter', [150, 100, 100, 200, 150]))
         
         # 设置分割器手柄样式
-        splitter.setHandleWidth(6)
+        self._right_splitter.setHandleWidth(6)
         
         return panel
-    
+
+    def _load_splitter_sizes(self, key: str, default: list) -> list:
+        """从配置文件加载分割器大小"""
+        try:
+            if self.config.has_option("window", key):
+                sizes = json.loads(self.config.get("window", key))
+                if isinstance(sizes, list) and len(sizes) == len(default):
+                    return sizes
+        except Exception:
+            pass
+        return default
+
     def init_actions(self):
         """初始化动作"""
         # 文件操作
         self.action_open_folder = QAction(tr("open_folder"), self)
         self.action_open_folder.setShortcut(QKeySequence.Open)
         self.action_open_folder.triggered.connect(self.load_image_folder)
-        
+
+        self.action_close_folder = QAction(tr("close_folder"), self)
+        self.action_close_folder.triggered.connect(self.close_image_folder)
+
         self.action_save = QAction(tr("save_annotations"), self)
         self.action_save.setShortcut(QKeySequence.Save)
         self.action_save.triggered.connect(self.save_annotations)
@@ -517,6 +541,7 @@ class MainWindow(QMainWindow):
         # 文件菜单
         self.file_menu = menubar.addMenu(tr("file"))
         self.file_menu.addAction(self.action_open_folder)
+        self.file_menu.addAction(self.action_close_folder)
         self.file_menu.addAction(self.action_save)
         self.file_menu.addAction(self.action_export)
         self.file_menu.addSeparator()
@@ -674,8 +699,14 @@ class MainWindow(QMainWindow):
                     from src.utils.i18n import TranslationManager
                     translation_manager = TranslationManager.instance()
                     translation_manager.current_language = saved_language
-                    translation_manager.load_translation_files()  # 新增：加载翻译文件
+                    translation_manager.load_translation_files()
                     self.logger.info(f"加载保存的语言: {saved_language}")
+        
+        # 加载最近文件夹
+        if self.config.has_option("preferences", "last_folder"):
+            self._last_folder_path = self.config.get("preferences", "last_folder")
+            if self._last_folder_path:
+                self.logger.info(f"加载保存的文件夹: {self._last_folder_path}")
     
     def save_settings(self):
         """保存设置"""
@@ -699,6 +730,14 @@ class MainWindow(QMainWindow):
                 self.config.set('window', 'geometry', geometry_data)
             else:
                 self.config.set('window', 'geometry', '')
+
+            # 保存分割器位置
+            if hasattr(self, '_main_splitter'):
+                self.config.set('window', 'main_splitter',
+                                json.dumps(self._main_splitter.sizes()))
+            if hasattr(self, '_right_splitter'):
+                self.config.set('window', 'right_splitter',
+                                json.dumps(self._right_splitter.sizes()))
             
             # 保存类别设置
             classes_data = self.class_manager.get_classes_list()
@@ -715,6 +754,9 @@ class MainWindow(QMainWindow):
             from src.utils.i18n import TranslationManager
             translation_manager = TranslationManager.instance()
             self.config.set('preferences', 'language', translation_manager.get_current_language())
+
+            # 保存最近文件夹
+            self.config.set('preferences', 'last_folder', self._last_folder_path)
             
             # 保存配置文件
             with open(self.config_file_path, 'w', encoding='utf-8') as configfile:
@@ -757,20 +799,43 @@ class MainWindow(QMainWindow):
     # ==================== 图片管理方法 ====================
     
     def load_image_folder(self):
-        """加载图片文件夹"""
+        """通过对话框加载图片文件夹"""
         folder_path = QFileDialog.getExistingDirectory(
             self, tr("select_image_folder_dialog_title"),
             self._last_browse_path
         )
 
         if folder_path:
-            self._last_browse_path = folder_path
-            self.image_manager.load_folder(folder_path)
-            self.update_image_list()
-            self.update_stats()
-            
-            if self.image_manager.get_image_count() > 0:
-                self.load_image(0)
+            self.load_image_folder_by_path(folder_path)
+
+    def load_image_folder_by_path(self, folder_path: str):
+        """加载指定路径的图片文件夹（供对话框和自动加载共用）"""
+        self._last_browse_path = folder_path
+        self._last_folder_path = folder_path
+        self.image_manager.load_folder(folder_path)
+        self.update_image_list()
+        self.update_stats()
+
+        if self.image_manager.get_image_count() > 0:
+            self.load_image(0)
+
+    def close_image_folder(self):
+        """关闭当前文件夹，下次启动不再自动打开"""
+        self.image_manager._image_paths.clear()
+        self.image_manager._current_folder = None
+        self.image_manager.clear_cache()
+        self.annotation_manager._annotations.clear()
+        self._last_folder_path = ""
+        self.current_image_path = None
+        self.current_image_index = 0
+        self.canvas._scene.clear()
+        self.canvas._crosshair_items = None
+        self.update_image_list()
+        self.update_stats()
+        self.image_info_label.setText(tr("no_image_loaded"))
+        self.status_image_info.setText("")
+        self.status_annotation_info.setText("")
+        self.save_settings()
     
     def load_image(self, index: int):
         """加载指定索引的图片"""
@@ -935,8 +1000,12 @@ class MainWindow(QMainWindow):
     def add_class(self):
         """添加类别"""
         from .class_dialog import ClassDialog
-        
+
         dialog = ClassDialog(self)
+        # 预先分配一个不与现有颜色重复的颜色并显示在对话框中
+        auto_color = self.class_manager._generate_color()
+        dialog.set_color(auto_color)
+
         if dialog.exec():
             class_name, color = dialog.get_values()
             self.class_manager.add_class(class_name, color)
@@ -1283,6 +1352,7 @@ class MainWindow(QMainWindow):
         )
         self.annotation_manager.execute_command(command)
         self.update_image_list()
+        self.load_annotations_for_current_image()
         self.update_undo_redo_actions()
 
     def _on_canvas_annotation_created(self, annotation):

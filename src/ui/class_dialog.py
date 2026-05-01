@@ -20,8 +20,9 @@ class ClassDialog(QDialog):
         super().__init__(parent)
         
         self.class_name = ""
-        self.color = (255, 0, 0)  # 默认红色
-        
+        self.color = None  # 未手动选择颜色，由 class_manager._generate_color() 自动分配
+        self._color_chosen = False
+
         self.init_ui()
         
         # 设置窗口属性
@@ -83,19 +84,29 @@ class ClassDialog(QDialog):
     
     def select_color(self):
         """选择颜色"""
-        current_color = QColor(*self.color)
+        current_color = QColor(255, 0, 0) if self.color is None else QColor(*self.color)
         color = QColorDialog.getColor(current_color, self, tr("select_color_dialog_title"))
-        
+
         if color.isValid():
             self.color = (color.red(), color.green(), color.blue())
+            self._color_chosen = True
             self.update_color_preview()
     
     def update_color_preview(self):
         """更新颜色预览"""
         palette = self.color_preview.palette()
-        palette.setColor(QPalette.Window, QColor(*self.color))
+        if self.color is None:
+            palette.setColor(QPalette.Window, QColor(200, 200, 200))  # 灰色表示自动分配
+        else:
+            palette.setColor(QPalette.Window, QColor(*self.color))
         self.color_preview.setPalette(palette)
     
+    def set_color(self, color: tuple):
+        """设置颜色（用于预分配颜色）"""
+        self.color = color
+        self._color_chosen = True
+        self.update_color_preview()
+
     def get_values(self):
         """获取对话框中的值"""
         return self.class_name, self.color

@@ -158,8 +158,11 @@ class TrainProgressDialog(QDialog):
         
         # 更新损失值
         if metrics:
-            loss = metrics.get('loss', 'N/A')
-            self.loss_label.setText(tr("training_progress_loss_format").format(loss))
+            parts = [f"{k}={v:.4f}" for k, v in metrics.items() if isinstance(v, (int, float))]
+            if parts:
+                self.loss_label.setText(tr("training_progress_loss_format").format("  ".join(parts[:3])))
+            else:
+                self.loss_label.setText(tr("training_progress_loss_default"))
         else:
             self.loss_label.setText(tr("training_progress_loss_default"))
     

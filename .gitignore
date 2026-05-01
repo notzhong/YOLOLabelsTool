@@ -219,6 +219,7 @@ final_test.py
 # Test data directories
 tests/coco8/
 runs/
+images/
 
 # YOLO Model
 *.pt

@@ -25,7 +25,9 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSlider,
+    QSplitter,
     QVBoxLayout,
+    QWidget,
 )
 
 from src.utils.i18n import tr
@@ -95,10 +97,10 @@ class ValidationDialog(QDialog):
         self._update_model_status()
 
     def _init_ui(self):
-        layout = QHBoxLayout(self)
-
-        left_panel = QVBoxLayout()
-        right_panel = QVBoxLayout()
+        splitter = QSplitter(Qt.Horizontal, self)
+        left_container = QWidget()
+        left_panel = QVBoxLayout(left_container)
+        left_panel.setContentsMargins(5, 5, 5, 5)
 
         model_group = QGroupBox(tr("model"))
         model_layout = QVBoxLayout(model_group)
@@ -224,10 +226,16 @@ class ValidationDialog(QDialog):
 
         self.preview_label = QLabel(tr("no_image_loaded"))
         self.preview_label.setAlignment(Qt.AlignCenter)
-        right_panel.addWidget(self.preview_label, 1)
 
-        layout.addLayout(left_panel, 1)
-        layout.addLayout(right_panel, 2)
+        splitter.addWidget(left_container)
+        splitter.addWidget(self.preview_label)
+        splitter.setStretchFactor(0, 0)  # 左侧不拉伸
+        splitter.setStretchFactor(1, 1)  # 右侧自适应拉伸
+        splitter.setSizes([280, 600])
+
+        main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.addWidget(splitter)
 
         self._on_source_changed()
 

@@ -24,6 +24,26 @@ class ClassManager:
         # 不初始化默认类别，从空状态开始
         # 用户可以根据需要添加自定义类别
     
+    # 预定义调色盘（视觉可区分，按优先级排列）
+    _COLOR_PALETTE = [
+        (255, 51, 51),    # 红
+        (51, 204, 51),    # 绿
+        (51, 153, 255),   # 蓝
+        (255, 153, 51),   # 橙
+        (153, 51, 255),   # 紫
+        (255, 255, 51),   # 黄
+        (51, 255, 255),   # 青
+        (255, 51, 153),   # 粉
+        (153, 204, 51),   # 黄绿
+        (51, 153, 153),   # 青绿
+        (204, 102, 51),   # 棕
+        (153, 153, 255),  # 淡紫
+        (102, 204, 102),  # 草绿
+        (255, 153, 153),  # 粉红
+        (51, 102, 204),   # 深蓝
+        (204, 153, 51),   # 金
+    ]
+
     def add_class(self, name: str, color: Optional[Tuple[int, int, int]] = None) -> int:
         """添加新类别"""
         # 检查名称是否已存在
@@ -145,12 +165,23 @@ class ClassManager:
         return None
     
     def _generate_color(self) -> Tuple[int, int, int]:
-        """生成随机但可区分的颜色"""
-        # 避免使用太暗或太亮的颜色
-        r = random.randint(50, 200)
-        g = random.randint(50, 200)
-        b = random.randint(50, 200)
-        return (r, g, b)
+        """生成不与已有类别重复的颜色"""
+        used_colors = {tuple(c["color"]) for c in self._classes.values()}
+
+        # 从调色盘中选第一个未使用的颜色
+        for color in self._COLOR_PALETTE:
+            if color not in used_colors:
+                return color
+
+        # 调色盘耗尽，随机生成（避开已使用的调色盘颜色）
+        palette_set = set(self._COLOR_PALETTE)
+        while True:
+            r = random.randint(50, 200)
+            g = random.randint(50, 200)
+            b = random.randint(50, 200)
+            color = (r, g, b)
+            if color not in used_colors or len(used_colors) > 500:
+                return color
     
     def export_to_yaml(self, output_path: str, dataset_path: str = "./dataset"):
         """导出 YOLO 格式的 data.yaml"""
@@ -252,10 +283,8 @@ class ClassManager:
         return self._next_class_id
     
     def build_names_config(self):
-        """构建 YOLO data.yaml 的 names 字段：ID 连续用列表，否则用字典"""
+        """构建 YOLO data.yaml 的 names 字段：始终使用字典以保留 ID 信息"""
         class_ids = sorted(self._classes.keys())
-        if class_ids and class_ids == list(range(max(class_ids) + 1)):
-            return [self._classes[i]["name"] for i in class_ids]
         return {i: self._classes[i]["name"] for i in class_ids}
 
     def clear_all(self) -> None:
