@@ -199,10 +199,11 @@ class MainWindow(QMainWindow):
                 
                 # 根据主题更新标题标签颜色
                 self.update_title_colors_for_theme(theme_name)
-                # 更新主题菜单选中标记
-                self.action_dark_theme.setChecked(theme_name == "dark")
-                self.action_light_theme.setChecked(theme_name == "light")
-                self.action_colorful_theme.setChecked(theme_name == "colorful")
+                # 更新主题菜单选中标记（菜单存在时）
+                if hasattr(self, 'action_dark_theme'):
+                    self.action_dark_theme.setChecked(theme_name == "dark")
+                    self.action_light_theme.setChecked(theme_name == "light")
+                    self.action_colorful_theme.setChecked(theme_name == "colorful")
                 
                 self.logger.info(f"已应用主题: {theme_name}")
             except Exception as e:
