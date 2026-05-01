@@ -77,6 +77,10 @@ class MainWindow(QMainWindow):
         self.canvas.selected_class_id = self.selected_class_id  # 同步初始类别
         self.init_actions()
         self.init_menus()
+        # 同步主题菜单勾选状态（必须在菜单创建后执行）
+        self.action_dark_theme.setChecked(self.current_theme == "dark")
+        self.action_light_theme.setChecked(self.current_theme == "light")
+        self.action_colorful_theme.setChecked(self.current_theme == "colorful")
         self.init_toolbar()
         self.init_statusbar()
         
@@ -133,7 +137,7 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence(Qt.Key_Right), self, self.next_image)
         # Tab/Shift+Tab 循环选择类别
         QShortcut(QKeySequence(Qt.Key_Tab), self, self._select_next_class)
-        QShortcut(QKeySequence(Qt.SHIFT | Qt.Key_Backtab), self, self._select_prev_class)
+        QShortcut(QKeySequence(Qt.SHIFT | Qt.Key_Tab), self, self._select_prev_class)
 
     def _select_next_class(self):
         """选择下一个类别"""
@@ -180,6 +184,8 @@ class MainWindow(QMainWindow):
             qss_path = Path("qss/dark_theme.qss")
         elif theme_name == "light":
             qss_path = Path("qss/light_theme.qss")
+        elif theme_name == "colorful":
+            qss_path = Path("qss/colorful_theme.qss")
         else:
             self.logger.warning(f"未知主题: {theme_name}, 使用默认主题")
             return
@@ -193,6 +199,10 @@ class MainWindow(QMainWindow):
                 
                 # 根据主题更新标题标签颜色
                 self.update_title_colors_for_theme(theme_name)
+                # 更新主题菜单选中标记
+                self.action_dark_theme.setChecked(theme_name == "dark")
+                self.action_light_theme.setChecked(theme_name == "light")
+                self.action_colorful_theme.setChecked(theme_name == "colorful")
                 
                 self.logger.info(f"已应用主题: {theme_name}")
             except Exception as e:
@@ -202,14 +212,14 @@ class MainWindow(QMainWindow):
     
     def update_title_colors_for_theme(self, theme_name: str):
         """根据主题更新标题标签颜色"""
-        if theme_name == "dark":
-            # 黑夜主题：白色标题，灰色状态
-            title_style = "font-weight: bold; font-size: 14px; color: #ffffff;"
-            status_style = "color: #aaaaaa; font-size: 12px;"
-        else:
+        if theme_name == "light":
             # 白天主题：黑色标题，深灰色状态
             title_style = "font-weight: bold; font-size: 14px; color: #333333;"
             status_style = "color: #777777; font-size: 12px;"
+        else:
+            # 黑夜/炫彩主题：白色标题，灰色状态
+            title_style = "font-weight: bold; font-size: 14px; color: #ffffff;"
+            status_style = "color: #aaaaaa; font-size: 12px;"
         
         # 查找并更新所有标题标签
         for widget in self.findChildren(QLabel):
@@ -229,6 +239,11 @@ class MainWindow(QMainWindow):
         self.apply_theme("light")
         self.save_settings()
     
+    def switch_to_colorful_theme(self):
+        """切换到炫彩主题"""
+        self.apply_theme("colorful")
+        self.save_settings()
+
     def create_left_panel(self) -> QWidget:
         """创建左侧图片列表面板"""
         panel = QWidget()
@@ -535,12 +550,19 @@ class MainWindow(QMainWindow):
         self.theme_menu = menubar.addMenu(tr("theme"))
         
         self.action_dark_theme = QAction(tr("dark_theme"), self)
+        self.action_dark_theme.setCheckable(True)
         self.action_dark_theme.triggered.connect(self.switch_to_dark_theme)
         self.theme_menu.addAction(self.action_dark_theme)
-        
+
         self.action_light_theme = QAction(tr("light_theme"), self)
+        self.action_light_theme.setCheckable(True)
         self.action_light_theme.triggered.connect(self.switch_to_light_theme)
         self.theme_menu.addAction(self.action_light_theme)
+
+        self.action_colorful_theme = QAction(tr("colorful_theme"), self)
+        self.action_colorful_theme.setCheckable(True)
+        self.action_colorful_theme.triggered.connect(self.switch_to_colorful_theme)
+        self.theme_menu.addAction(self.action_colorful_theme)
         
         # 模型菜单
         self.model_menu = menubar.addMenu(tr("model"))
@@ -639,7 +661,7 @@ class MainWindow(QMainWindow):
             # 加载主题设置
             if self.config.has_option('preferences', 'theme'):
                 saved_theme = self.config.get('preferences', 'theme')
-                if saved_theme in ['dark', 'light']:
+                if saved_theme in ['dark', 'light', 'colorful']:
                     self.current_theme = saved_theme
                     self.logger.info(f"加载保存的主题: {self.current_theme}")
             
@@ -1677,6 +1699,7 @@ class MainWindow(QMainWindow):
 
         self.action_dark_theme.setText(tr("dark_theme"))
         self.action_light_theme.setText(tr("light_theme"))
+        self.action_colorful_theme.setText(tr("colorful_theme"))
 
         self.action_chinese.setText(tr("chinese"))
         self.action_english.setText(tr("english"))

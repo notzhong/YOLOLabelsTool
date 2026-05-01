@@ -55,6 +55,23 @@ QLabel {
     color: #333333;
 }
 
+/* 分割器样式 */
+QSplitter::handle {
+    background-color: #d0d0d0;
+}
+
+QSplitter::handle:horizontal {
+    width: 4px;
+}
+
+QSplitter::handle:vertical {
+    height: 4px;
+}
+
+QSplitter::handle:hover {
+    background-color: #0078d4;
+}
+
 /* 菜单栏样式 */
 QMenuBar {
     background-color: #f8f8f8;
