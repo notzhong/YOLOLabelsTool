@@ -325,7 +325,14 @@ class TrainDialog(QDialog):
         self.lr0_spin.setValue(0.01)
         self.lr0_spin.setDecimals(5)
         optimizer_layout.addRow(tr("initial_learning_rate"), self.lr0_spin)
-        
+
+        self.lrf_spin = QDoubleSpinBox()
+        self.lrf_spin.setRange(0.0, 1.0)
+        self.lrf_spin.setSingleStep(0.01)
+        self.lrf_spin.setValue(0.01)
+        self.lrf_spin.setDecimals(4)
+        optimizer_layout.addRow(tr("final_lr_factor"), self.lrf_spin)
+
         self.cos_lr_checkbox = QCheckBox(tr("use_cosine_lr"))
         self.cos_lr_checkbox.setChecked(True)
         optimizer_layout.addRow(self.cos_lr_checkbox)
@@ -474,17 +481,22 @@ class TrainDialog(QDialog):
         other_layout = QFormLayout(other_advanced_group)
         
         self.label_smoothing_spin = QDoubleSpinBox()
-        self.label_smoothing_spin.setRange(0.0, 0.2)
-        self.label_smoothing_spin.setSingleStep(0.01)
-        self.label_smoothing_spin.setValue(0.0)
-        other_layout.addRow(tr("label_smoothing"), self.label_smoothing_spin)
+        self.label_smoothing_spin.setRange(0.0, 1.0)
+        self.label_smoothing_spin.setSingleStep(0.1)
+        self.label_smoothing_spin.setValue(0.4)
+        other_layout.addRow(tr("erasing"), self.label_smoothing_spin)
         
         self.dropout_spin = QDoubleSpinBox()
         self.dropout_spin.setRange(0.0, 0.5)
         self.dropout_spin.setSingleStep(0.05)
         self.dropout_spin.setValue(0.0)
         other_layout.addRow(tr("dropout_rate"), self.dropout_spin)
-        
+
+        self.seed_spin = QSpinBox()
+        self.seed_spin.setRange(0, 2147483647)
+        self.seed_spin.setValue(0)
+        other_layout.addRow(tr("random_seed"), self.seed_spin)
+
         self.fliplr_spin = QDoubleSpinBox()
         self.fliplr_spin.setRange(0.0, 1.0)
         self.fliplr_spin.setSingleStep(0.1)
@@ -637,6 +649,7 @@ class TrainDialog(QDialog):
         # 优化器设置
         config['optimizer'] = self.optimizer_combo.currentText()
         config['lr0'] = self.lr0_spin.value()
+        config['lrf'] = self.lrf_spin.value()
         config['cos_lr'] = self.cos_lr_checkbox.isChecked()
         
         # 数据增强
@@ -645,7 +658,7 @@ class TrainDialog(QDialog):
         config['degrees'] = self.degrees_spin.value()
         config['shear'] = self.shear_spin.value()
         config['perspective'] = self.perspective_spin.value()
-        config['flip_up_down'] = self.flip_up_down_spin.value()
+        config['flipud'] = self.flip_up_down_spin.value()
         config['hsv_h'] = self.hsv_h_spin.value()
         config['hsv_s'] = self.hsv_s_spin.value()
         config['hsv_v'] = self.hsv_v_spin.value()
@@ -659,8 +672,9 @@ class TrainDialog(QDialog):
         config['box'] = self.box_weight_spin.value()
         config['cls'] = self.cls_weight_spin.value()
         config['dfl'] = self.dfl_weight_spin.value()
-        config['label_smoothing'] = self.label_smoothing_spin.value()
+        config['erasing'] = self.label_smoothing_spin.value()
         config['dropout'] = self.dropout_spin.value()
+        config['seed'] = self.seed_spin.value()
         config['fliplr'] = self.fliplr_spin.value()
         config['mosaic'] = self.mosaic_spin.value()
         config['copy_paste'] = self.copy_paste_spin.value()
@@ -727,6 +741,7 @@ class TrainDialog(QDialog):
             self.optimizer_combo.setCurrentIndex(index)
         
         self.lr0_spin.setValue(self.config.get('lr0', 0.0008))
+        self.lrf_spin.setValue(self.config.get('lrf', 0.01))
         self.cos_lr_checkbox.setChecked(self.config.get('cos_lr', True))
         
         # 数据增强
@@ -736,7 +751,7 @@ class TrainDialog(QDialog):
         self.degrees_spin.setValue(self.config.get('degrees', 0.0))
         self.shear_spin.setValue(self.config.get('shear', 0.0))
         self.perspective_spin.setValue(self.config.get('perspective', 0.0))
-        self.flip_up_down_spin.setValue(self.config.get('flip_up_down', 0.0))
+        self.flip_up_down_spin.setValue(self.config.get('flipud', 0.0))
         self.hsv_h_spin.setValue(self.config.get('hsv_h', 0.015))
         self.hsv_s_spin.setValue(self.config.get('hsv_s', 0.7))
         self.hsv_v_spin.setValue(self.config.get('hsv_v', 0.4))
@@ -753,8 +768,9 @@ class TrainDialog(QDialog):
         self.box_weight_spin.setValue(self.config.get('box', 7.5))
         self.cls_weight_spin.setValue(self.config.get('cls', 0.5))
         self.dfl_weight_spin.setValue(self.config.get('dfl', 1.5))
-        self.label_smoothing_spin.setValue(self.config.get('label_smoothing', 0.0))
+        self.label_smoothing_spin.setValue(self.config.get('erasing', 0.4))
         self.dropout_spin.setValue(self.config.get('dropout', 0.0))
+        self.seed_spin.setValue(self.config.get('seed', 0))
         self.fliplr_spin.setValue(self.config.get('fliplr', 0.5))
         self.mosaic_spin.setValue(self.config.get('mosaic', 1.0))
         self.copy_paste_spin.setValue(self.config.get('copy_paste', 0.0))
@@ -798,7 +814,8 @@ class TrainDialog(QDialog):
         """加载上次保存的训练配置"""
         try:
             if self.config_file_path.exists():
-                self.config_parser.read(self.config_file_path)
+                with open(self.config_file_path, 'r', encoding='utf-8') as f:
+                    self.config_parser.read_file(f)
                 
                 # 检查是否启用自动保存配置
                 auto_save = self.config_parser.getboolean('training', 'auto_save_config', fallback=True)
@@ -881,6 +898,7 @@ class TrainDialog(QDialog):
             self.perspective_spin,
             self.flip_up_down_spin,
             self.lr0_spin,
+            self.lrf_spin,
             # 新增的数值控件
             self.hsv_h_spin,
             self.hsv_s_spin,
@@ -895,6 +913,7 @@ class TrainDialog(QDialog):
             self.dfl_weight_spin,
             self.label_smoothing_spin,
             self.dropout_spin,
+            self.seed_spin,
             self.fliplr_spin,
             self.mosaic_spin,
             self.copy_paste_spin

@@ -196,6 +196,7 @@ class YOLOTrainer(QObject):
                 'workers': self.config.get('workers', 8),
                 'optimizer': self.config.get('optimizer', 'AdamW'),
                 'lr0': self.config.get('lr0', 0.01),
+                'lrf': self.config.get('lrf', 0.01),
                 'cos_lr': self.config.get('cos_lr', True),
                 'close_mosaic': self.config.get('close_mosaic', 40),
                 'patience': self.config.get('patience', 40),
@@ -209,7 +210,7 @@ class YOLOTrainer(QObject):
                 'degrees': self.config.get('degrees', 0.0),
                 'shear': self.config.get('shear', 0.0),
                 'perspective': self.config.get('perspective', 0.0),
-                'flip_up_down': self.config.get('flip_up_down', 0.0),
+                'flipud': self.config.get('flipud', 0.0),
                 'project': self.config.get('output_dir'),
                 'name': self.config.get('run_name', 'train'),
                 'exist_ok': True,  # 允许覆盖现有运行
@@ -225,8 +226,8 @@ class YOLOTrainer(QObject):
                 'box': self.config.get('box', 7.5),
                 'cls': self.config.get('cls', 0.5),
                 'dfl': self.config.get('dfl', 1.5),
-                # 新增标签平滑
-                'label_smoothing': self.config.get('label_smoothing', 0.0),
+                # 随机擦除增强（替代已移除的 label_smoothing）
+                'erasing': self.config.get('erasing', 0.4),
                 # 新增HSV增强参数
                 'hsv_h': self.config.get('hsv_h', 0.015),
                 'hsv_s': self.config.get('hsv_s', 0.7),
@@ -237,6 +238,8 @@ class YOLOTrainer(QObject):
                 'copy_paste': self.config.get('copy_paste', 0.0),
                 # 新增正则化参数
                 'dropout': self.config.get('dropout', 0.0),
+                # 随机种子
+                'seed': self.config.get('seed', 0),
             }
             
             # 移除None值
@@ -381,6 +384,7 @@ class YOLOTrainer(QObject):
             'workers': 8,
             'optimizer': 'AdamW',
             'lr0': 0.01,
+            'lrf': 0.01,
             'cos_lr': True,
             'close_mosaic': 40,
             'patience': 40,
@@ -394,7 +398,7 @@ class YOLOTrainer(QObject):
             'degrees': 0.0,
             'shear': 0.0,
             'perspective': 0.0,
-            'flip_up_down': 0.0,
+            'flipud': 0.0,
             'resume': False,
             # 新增优化器参数
             'weight_decay': 0.0005,
@@ -407,8 +411,8 @@ class YOLOTrainer(QObject):
             'box': 7.5,
             'cls': 0.5,
             'dfl': 1.5,
-            # 新增标签平滑
-            'label_smoothing': 0.0,
+            # 随机擦除增强（替代已移除的 label_smoothing）
+            'erasing': 0.4,
             # 新增HSV增强参数
             'hsv_h': 0.015,
             'hsv_s': 0.7,
@@ -419,6 +423,8 @@ class YOLOTrainer(QObject):
             'copy_paste': 0.0,
             # 新增正则化参数
             'dropout': 0.0,
+            # 随机种子
+            'seed': 0,
         }
     
     def _register_callbacks(self, callback_instance):
