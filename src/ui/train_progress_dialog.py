@@ -1,7 +1,6 @@
 """
 训练进度对话框 - 显示训练进度和日志
 """
-import time
 from datetime import datetime
 from typing import Optional
 

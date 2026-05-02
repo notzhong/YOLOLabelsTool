@@ -2,19 +2,17 @@
 模型训练配置对话框
 """
 import json
-import os
 import configparser
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QGroupBox, QFormLayout, QSpinBox, QDoubleSpinBox,
     QComboBox, QCheckBox, QFileDialog, QMessageBox, QTabWidget,
-    QWidget, QTextEdit, QScrollArea
+    QWidget
 )
-from PySide6.QtCore import Qt, Signal, Slot
-from PySide6.QtGui import QFont
+from PySide6.QtCore import Qt
 
 from yolo_tool import YOLOTrainer
 from src.utils.i18n import tr
@@ -527,9 +525,10 @@ class TrainDialog(QDialog):
     def on_augment_toggled(self, checked: bool):
         """数据增强复选框状态改变"""
         # 启用/禁用所有增强参数控件
-        for widget in [self.mixup_spin, self.degrees_spin, 
-                       self.shear_spin, self.perspective_spin, 
-                       self.flip_up_down_spin]:
+        for widget in [self.mixup_spin, self.degrees_spin,
+                       self.shear_spin, self.perspective_spin,
+                       self.flip_up_down_spin, self.hsv_h_spin,
+                       self.hsv_s_spin, self.hsv_v_spin]:
             widget.setEnabled(checked)
     
     def _browse_open_file(self, target_edit: QLineEdit, title_key: str, file_filter: str):

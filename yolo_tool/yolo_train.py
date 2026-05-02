@@ -159,7 +159,7 @@ class YOLOTrainer(QObject):
             return False
         
         # 设置默认输出目录
-        if 'output_dir' not in config:
+        if 'output_dir' not in self.config:
             self.config['output_dir'] = str(Path.cwd() / "runs" / "train")
         
         self.log_message.emit("训练参数设置完成")
