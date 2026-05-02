@@ -1,17 +1,15 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-
 import os
 import sys
 from PyInstaller.utils.hooks import collect_submodules
 
-# 防止 Qt 插件被自动删除
 sys.setrecursionlimit(5000)
 
 project_root = os.getcwd()
 
 # ===============================
-# 数据文件（ini/qss/icon）收集
+# 数据文件收集
 # ===============================
 datas = []
 
@@ -41,6 +39,22 @@ if os.path.exists(icon_path):
     datas.append((icon_path, '.'))
 
 
+# ===============================
+# 排除不必要的模块，减小打包体积
+# ===============================
+excludes = [
+    'tkinter',
+    'test',
+    'unittest',
+    'distutils',
+    'venv',
+    'ensurepip',
+    'pydoc',
+    'lib2to3',
+    '__pycache__',
+    '*.pyc',
+]
+
 a = Analysis(
     ['main.py'],
     pathex=[],
@@ -50,7 +64,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=excludes,
     noarchive=False,
     optimize=0,
 )
@@ -64,7 +78,7 @@ exe = EXE(
     name='YoloLabelsTrainTool',
     debug=False,
     bootloader_ignore_signals=False,
-    strip=False,
+    strip=True,
     upx=True,
     console=False,
     disable_windowed_traceback=False,
@@ -79,7 +93,7 @@ coll = COLLECT(
     exe,
     a.binaries,
     a.datas,
-    strip=False,
+    strip=True,
     upx=True,
     upx_exclude=[],
     name='YoloLabelsTrainTool',
