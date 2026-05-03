@@ -2,7 +2,7 @@
 
 import os
 import sys
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_all
 
 sys.setrecursionlimit(5000)
 
@@ -38,6 +38,44 @@ icon_path = os.path.join(project_root, "icon.ico")
 if os.path.exists(icon_path):
     datas.append((icon_path, '.'))
 
+# ===============================
+# 自动收集 ultralytics 及其动态导入
+# ===============================
+ultralytics_datas, ultralytics_binaries, ultralytics_hidden = collect_all('ultralytics')
+datas.extend(ultralytics_datas)
+binaries = list(ultralytics_binaries)
+hiddenimports = list(ultralytics_hidden)
+
+# 补充 ultralytics / torch 可能需要的动态子模块
+hiddenimports += [
+    'torch',
+    'torchvision',
+    'ultralytics.nn.tasks',
+    'ultralytics.engine.trainer',
+    'ultralytics.engine.validator',
+    'ultralytics.engine.predictor',
+    'ultralytics.engine.model',
+    'ultralytics.engine.results',
+    'ultralytics.models.yolo.model',
+    'ultralytics.models.yolo.detect.train',
+    'ultralytics.models.yolo.detect.val',
+    'ultralytics.models.yolo.detect.predict',
+    'ultralytics.trackers',
+    'ultralytics.utils',
+    'ultralytics.utils.ops',
+    'ultralytics.utils.torch_utils',
+    'ultralytics.utils.loss',
+    'ultralytics.utils.metrics',
+    'ultralytics.utils.files',
+    'ultralytics.utils.plotting',
+    'ultralytics.data',
+    'ultralytics.data.augment',
+    'ultralytics.data.dataset',
+    'ultralytics.data.utils',
+    'ultralytics.data.loaders',
+    'ultralytics.cfg',
+    'ultralytics.solutions',
+]
 
 # ===============================
 # 排除不必要的模块，减小打包体积
@@ -45,7 +83,6 @@ if os.path.exists(icon_path):
 excludes = [
     'tkinter',
     'test',
-    'unittest',
     'distutils',
     'venv',
     'ensurepip',
@@ -58,9 +95,9 @@ excludes = [
 a = Analysis(
     ['main.py'],
     pathex=[],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
-    hiddenimports=[],
+    hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -78,7 +115,7 @@ exe = EXE(
     name='YoloLabelsTrainTool',
     debug=False,
     bootloader_ignore_signals=False,
-    strip=True,
+    strip=False,
     upx=True,
     console=False,
     disable_windowed_traceback=False,
@@ -93,7 +130,7 @@ coll = COLLECT(
     exe,
     a.binaries,
     a.datas,
-    strip=True,
+    strip=False,
     upx=True,
     upx_exclude=[],
     name='YoloLabelsTrainTool',
