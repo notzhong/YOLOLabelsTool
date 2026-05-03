@@ -129,7 +129,16 @@ class ImageManager:
     def clear_cache(self):
         """清除图片缓存"""
         self._image_cache.clear()
-    
+
+    def remove_image(self, index: int) -> bool:
+        """Remove image at given index from the list and cache, returns True if successful"""
+        if 0 <= index < len(self._image_paths):
+            removed_path = self._image_paths.pop(index)
+            if removed_path in self._image_cache:
+                del self._image_cache[removed_path]
+            return True
+        return False
+
     def get_image_thumbnail(self, image_path: str, max_size: Tuple[int, int] = (100, 100)) -> Optional[np.ndarray]:
         """获取缩略图"""
         img_array = self.load_image(image_path, use_cache=True)

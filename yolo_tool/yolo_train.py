@@ -2,7 +2,9 @@
 YOLO模型训练器 - 支持异步训练、配置保存和恢复训练
 """
 import os
+import sys
 import json
+import logging
 import threading
 import time
 import gc
@@ -57,9 +59,9 @@ class ProgressCallback:
                                 if isinstance(value, (int, float)):
                                     metrics[metric] = value
             
-            # 发送进度更新信号
-            self.trainer.progress_updated.emit(epoch, metrics)
-            self.trainer.log_message.emit(f"Epoch {epoch}/{trainer.epochs} 完成")
+            # 发送进度更新信号（ultralytics epoch 是 0-indexed，显示时 +1）
+            self.trainer.progress_updated.emit(epoch + 1, metrics)
+            self.trainer.log_message.emit(f"Epoch {epoch + 1}/{trainer.epochs} 完成")
         except Exception as e:
             self.trainer.log_message.emit(f"回调错误: {str(e)[:100]}")
     
@@ -86,9 +88,9 @@ class ProgressCallback:
                         if i < len(loss_items):
                             metrics[name] = float(loss_items[i])
             
-            # 如果有损失数据，发送更新
+            # 如果有损失数据，发送更新（ultralytics epoch 是 0-indexed，显示时 +1）
             if metrics:
-                self.trainer.progress_updated.emit(epoch, metrics)
+                self.trainer.progress_updated.emit(epoch + 1, metrics)
         except Exception as e:
             # 忽略批次更新错误，不影响主流程
             pass
@@ -167,6 +169,28 @@ class YOLOTrainer(QObject):
     
     def _training_worker(self):
         """训练工作线程"""
+        # GUI 环境下 sys.stdout 可能为 None，导致 ultralytics TQDM 崩溃
+        if sys.stdout is None:
+            sys.stdout = open(os.devnull, 'w', encoding='utf-8')
+        if sys.stderr is None:
+            sys.stderr = open(os.devnull, 'w', encoding='utf-8')
+
+        # 确保 stdout/stderr 使用 UTF-8 编码，避免 GBK 无法编码 ✅ 等字符
+        for _s in (sys.stdout, sys.stderr):
+            if hasattr(_s, 'reconfigure'):
+                try:
+                    _s.reconfigure(encoding='utf-8', errors='replace')
+                except Exception:
+                    pass
+
+        # 修复已有的日志处理器：移除 None stream 的处理器，或将其重定向到 devnull
+        for logger_name in list(logging.root.manager.loggerDict):
+            logger = logging.getLogger(logger_name)
+            for handler in logger.handlers[:]:
+                if isinstance(handler, logging.StreamHandler):
+                    if handler.stream is None:
+                        logger.removeHandler(handler)
+
         try:
             self.is_training = True
             self.should_stop = False

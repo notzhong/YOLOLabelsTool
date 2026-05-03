@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QFileDialog, QMessageBox, QToolBar, QStatusBar,
     QMenuBar, QMenu, QDockWidget, QFrame, QSizePolicy,
     QScrollArea, QGroupBox, QComboBox, QCheckBox,
-    QProgressDialog, QApplication
+    QProgressDialog, QApplication, QAbstractItemView
 )
 from PySide6.QtCore import (
     Qt,
@@ -287,6 +287,9 @@ class MainWindow(QMainWindow):
         # 图片列表
         self.image_list_widget = QListWidget()
         self.image_list_widget.itemClicked.connect(self.on_image_item_clicked)
+        self.image_list_widget.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.image_list_widget.customContextMenuRequested.connect(self._on_image_list_context_menu)
+        self.image_list_widget.setSelectionMode(QAbstractItemView.ExtendedSelection)
         layout.addWidget(self.image_list_widget)
         
         # 统计信息
@@ -911,6 +914,136 @@ class MainWindow(QMainWindow):
         """图片列表项点击事件"""
         index = self.image_list_widget.row(item)
         self.load_image(index)
+
+    def _on_image_list_context_menu(self, pos):
+        """图片列表右键菜单"""
+        menu = QMenu(self)
+        action_delete = menu.addAction(tr("delete_unannotated"))
+        action_delete.triggered.connect(self._delete_all_unannotated_images)
+
+        action_remove = menu.addAction(tr("remove_from_list"))
+        action_remove.triggered.connect(self._remove_selected_images)
+        action_remove.setEnabled(len(self.image_list_widget.selectedItems()) > 0)
+
+        menu.exec(self.image_list_widget.mapToGlobal(pos))
+
+    def _delete_all_unannotated_images(self):
+        """删除所有未标注的图片（同时删除本地文件）"""
+        count = self.image_manager.get_image_count()
+        if count == 0:
+            return
+
+        # 收集未标注的图片索引
+        unannotated_indices = []
+        for i in range(count):
+            image_path = self.image_manager.get_image_path(i)
+            if not self.annotation_manager.has_annotations(image_path):
+                unannotated_indices.append(i)
+
+        if not unannotated_indices:
+            QMessageBox.information(self, tr("info"), tr("no_unannotated_images"))
+            return
+
+        # 确认对话框
+        reply = QMessageBox.question(
+            self, tr("confirm"),
+            tr("confirm_delete_unannotated").replace("{count}", str(len(unannotated_indices))),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        # 先收集路径再操作
+        paths_to_delete = [self.image_manager.get_image_path(i) for i in unannotated_indices]
+        current_image_path = self.current_image_path
+
+        # 删除本地文件和标注文件
+        deleted_count = 0
+        for image_path in paths_to_delete:
+            try:
+                if os.path.exists(image_path):
+                    os.remove(image_path)
+                    deleted_count += 1
+            except OSError as e:
+                self.logger.error(f"删除图片失败: {image_path}, {e}")
+            # 清理对应的标注文件
+            if self.annotation_manager.has_annotations(image_path):
+                self.annotation_manager.clear_annotations(image_path)
+
+        # 从列表中移除（反向遍历保持索引正确）
+        current_was_deleted = current_image_path in paths_to_delete
+        for i in sorted(unannotated_indices, reverse=True):
+            self.image_manager.remove_image(i)
+
+        # 处理当前显示的图片
+        self._handle_image_after_removal(current_was_deleted)
+
+        # 更新界面
+        self.update_image_list()
+        self.update_stats()
+        self.update_status(tr("images_deleted").replace("{count}", str(deleted_count)))
+
+    def _remove_selected_images(self):
+        """从列表中移除选中的图片（不删除本地文件）"""
+        selected_items = self.image_list_widget.selectedItems()
+        if not selected_items:
+            return
+
+        reply = QMessageBox.question(
+            self, tr("confirm"),
+            tr("confirm_remove_selected").replace("{count}", str(len(selected_items))),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        # 收集选中的行号和路径
+        selected = []
+        for item in selected_items:
+            row = self.image_list_widget.row(item)
+            path = self.image_manager.get_image_path(row)
+            if path is not None:
+                selected.append((row, path))
+
+        current_image_path = self.current_image_path
+        current_was_removed = any(path == current_image_path for _, path in selected)
+
+        # 反向遍历移除
+        for row, _ in sorted(selected, key=lambda x: x[0], reverse=True):
+            self.image_manager.remove_image(row)
+
+        # 处理当前显示的图片
+        self._handle_image_after_removal(current_was_removed)
+
+        # 更新界面
+        self.update_image_list()
+        self.update_stats()
+        self.update_status(tr("images_removed").replace("{count}", str(len(selected))))
+
+    def _handle_image_after_removal(self, current_was_affected: bool):
+        """处理移除图片后的当前图片状态"""
+        total = self.image_manager.get_image_count()
+
+        if total == 0:
+            self.current_image_path = None
+            self.current_image_index = 0
+            self.canvas._scene.clear()
+            self.canvas._crosshair_items = None
+            self.image_info_label.setText(tr("no_image_loaded"))
+            self.status_image_info.setText("")
+            self.status_annotation_info.setText("")
+            return
+
+        if current_was_affected or self.current_image_path is None:
+            self.load_image(0)
+        else:
+            # 当前图片还在列表中，但索引可能已变化，找回来
+            new_index = self.current_image_index
+            if new_index >= total:
+                new_index = total - 1
+            self.load_image(new_index)
     
     def prev_image(self):
         """上一张图片"""

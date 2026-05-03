@@ -6,6 +6,7 @@ YOLO 标注工具 - 主程序入口
 
 import sys
 import traceback
+import multiprocessing
 from pathlib import Path
 
 
@@ -105,5 +106,6 @@ def main():
 
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()
     exit_code = main()
     sys.exit(exit_code)
