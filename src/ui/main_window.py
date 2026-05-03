@@ -1282,17 +1282,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, tr("warning"), tr("no_annotation_selected"))
             return
 
-        annotations = self.annotation_manager.get_annotations(self.current_image_path)
-
-        annotation_index = -1
-        for i, ann in enumerate(annotations):
-            if (abs(ann.x - sel_annotation.x) < 1 and
-                abs(ann.y - sel_annotation.y) < 1 and
-                abs(ann.width - sel_annotation.width) < 1 and
-                abs(ann.height - sel_annotation.height) < 1 and
-                ann.class_id == sel_annotation.class_id):
-                annotation_index = i
-                break
+        annotation_index = self.canvas.get_selected_annotation_index()
 
         if annotation_index >= 0:
             from src.core.annotation import DeleteAnnotationCommand
@@ -1382,7 +1372,8 @@ class MainWindow(QMainWindow):
                 splitter.split_and_export(
                     self.image_manager,
                     self.annotation_manager,
-                    output_dir
+                    output_dir,
+                    class_manager=self.class_manager,
                 )
                 QMessageBox.information(self, tr("success"), f"{tr('dataset_split_export_success')} {output_dir}")
             except Exception as e:
@@ -1494,30 +1485,21 @@ class MainWindow(QMainWindow):
         class_name = self.class_manager.get_class_name(self.selected_class_id)
         self.update_status(tr("annotation_created").replace("{class_name}", class_name))
 
-    def _on_canvas_annotation_deleted(self, annotation):
+    def _on_canvas_annotation_deleted(self, annotation, index: int = -1):
         """用户通过右键菜单删除了一个标注"""
         if not self.current_image_path:
             return
 
-        annotations = self.annotation_manager.get_annotations(self.current_image_path)
-        annotation_index = -1
-        for i, ann in enumerate(annotations):
-            if (abs(ann.x - annotation.x) < 1 and
-                abs(ann.y - annotation.y) < 1 and
-                abs(ann.width - annotation.width) < 1 and
-                abs(ann.height - annotation.height) < 1 and
-                ann.class_id == annotation.class_id):
-                annotation_index = i
-                break
+        if index < 0:
+            return
 
-        if annotation_index >= 0:
-            from src.core.annotation import DeleteAnnotationCommand
-            command = DeleteAnnotationCommand(
-                self.annotation_manager,
-                self.current_image_path,
-                annotation_index
-            )
-            self.annotation_manager.execute_command(command)
+        from src.core.annotation import DeleteAnnotationCommand
+        command = DeleteAnnotationCommand(
+            self.annotation_manager,
+            self.current_image_path,
+            index
+        )
+        self.annotation_manager.execute_command(command)
 
         self.load_annotations_for_current_image()
         self.update_image_list()
@@ -1661,11 +1643,22 @@ class MainWindow(QMainWindow):
         if not self.current_image_path:
             QMessageBox.warning(self, tr("warning"), tr("no_image_loaded"))
             return
-        
+
         if not self.model_manager.is_model_loaded():
             QMessageBox.warning(self, tr("warning"), tr("no_model_loaded"))
             return
-        
+
+        # 如果已有标注，确认是否覆盖
+        if self.annotation_manager.has_annotations(self.current_image_path):
+            reply = QMessageBox.question(
+                self, tr("confirm"),
+                tr("auto_annotation_overwrite_warning"),
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            if reply != QMessageBox.Yes:
+                return
+
         try:
             # 显示进度
             QApplication.setOverrideCursor(Qt.WaitCursor)

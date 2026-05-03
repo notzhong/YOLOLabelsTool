@@ -13,6 +13,7 @@ from src.utils.yolo_exporter import YOLOExporter
 def random_split(
     image_paths: List[str],
     split_ratios: Tuple[float, float, float],
+    seed: int = 42,
 ) -> Tuple[List[str], List[str], List[str]]:
     """打乱并划分数据集为 train/val/test。
 
@@ -25,6 +26,7 @@ def random_split(
     train_r, val_r, _ = split_ratios
 
     shuffled = image_paths.copy()
+    random.seed(seed)
     random.shuffle(shuffled)
 
     train_end = int(total * train_r)
@@ -48,6 +50,7 @@ class DatasetSplitter:
         image_manager,
         annotation_manager,
         output_dir: str,
+        class_manager=None,
         split_ratios: Tuple[float, float, float] = (0.7, 0.2, 0.1),
         copy_images: bool = True,
         random_seed: int = 42
@@ -95,6 +98,11 @@ class DatasetSplitter:
                         output_path / "images" / subset_name,
                         output_path / "labels" / subset_name,
                     )
+
+        # 生成 data.yaml（需要 class_manager）
+        if class_manager:
+            exporter = YOLOExporter()
+            exporter._export_yaml_config(class_manager, str(output_path))
     
     def _export_split_info(
         self,

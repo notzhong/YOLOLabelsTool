@@ -222,12 +222,12 @@ class TrainDialog(QDialog):
         
         self.batch_spin = QSpinBox()
         self.batch_spin.setRange(1, 128)
-        self.batch_spin.setValue(16)
+        self.batch_spin.setValue(4)
         train_layout.addRow(tr("batch_label"), self.batch_spin)
         
         self.workers_spin = QSpinBox()
         self.workers_spin.setRange(1, 32)
-        self.workers_spin.setValue(8)
+        self.workers_spin.setValue(4)
         train_layout.addRow(tr("workers_label"), self.workers_spin)
         
         layout.addWidget(train_group)
@@ -697,8 +697,8 @@ class TrainDialog(QDialog):
         # 训练参数
         self.epochs_spin.setValue(self.config.get('epochs', 300))
         self.imgsz_spin.setValue(self.config.get('imgsz', 640))
-        self.batch_spin.setValue(self.config.get('batch', 16))
-        self.workers_spin.setValue(self.config.get('workers', 8))
+        self.batch_spin.setValue(self.config.get('batch', 4))
+        self.workers_spin.setValue(self.config.get('workers', 4))
         
         # 设备设置
         device = self.config.get('device', 0)
@@ -739,7 +739,7 @@ class TrainDialog(QDialog):
         if index >= 0:
             self.optimizer_combo.setCurrentIndex(index)
         
-        self.lr0_spin.setValue(self.config.get('lr0', 0.0008))
+        self.lr0_spin.setValue(self.config.get('lr0', 0.01))
         self.lrf_spin.setValue(self.config.get('lrf', 0.01))
         self.cos_lr_checkbox.setChecked(self.config.get('cos_lr', True))
         
@@ -777,36 +777,38 @@ class TrainDialog(QDialog):
     def validate_config(self) -> bool:
         """验证配置"""
         config = self.collect_config_from_ui()
-        
-        # 检查必要参数
-        if not config['model_path']:
-            QMessageBox.warning(self, tr("warning"), tr("validation_failed_model_file"))
-            self.model_path_edit.setFocus()
-            return False
-        
+
+        is_resume = config['resume'] and isinstance(config['resume'], str) and Path(config['resume']).exists()
+
+        # 恢复训练时不需要 model_path
+        if not is_resume:
+            if not config['model_path']:
+                QMessageBox.warning(self, tr("warning"), tr("validation_failed_model_file"))
+                self.model_path_edit.setFocus()
+                return False
+
+            if not Path(config['model_path']).exists():
+                QMessageBox.warning(self, tr("warning"), tr("model_file_not_exists") + f" {config['model_path']}")
+                self.model_path_edit.setFocus()
+                return False
+
         if not config['data_yaml']:
             QMessageBox.warning(self, tr("warning"), tr("validation_failed_data_yaml"))
             self.data_yaml_edit.setFocus()
             return False
-        
-        # 检查文件是否存在
-        if not Path(config['model_path']).exists():
-            QMessageBox.warning(self, tr("warning"), tr("model_file_not_exists") + f" {config['model_path']}")
-            self.model_path_edit.setFocus()
-            return False
-        
+
         if not Path(config['data_yaml']).exists():
             QMessageBox.warning(self, tr("warning"), tr("data_yaml_not_exists") + f" {config['data_yaml']}")
             self.data_yaml_edit.setFocus()
             return False
-        
+
         # 如果启用了恢复训练，检查检查点文件
         if config['resume'] and isinstance(config['resume'], str):
             if not Path(config['resume']).exists():
                 QMessageBox.warning(self, tr("warning"), tr("checkpoint_file_not_exists") + f" {config['resume']}")
                 self.resume_path_edit.setFocus()
                 return False
-        
+
         return True
     
     def load_last_config(self):
@@ -1039,6 +1041,12 @@ class TrainDialog(QDialog):
         from .train_progress_dialog import TrainProgressDialog
         progress_dialog = TrainProgressDialog(self.trainer, parent=self)
         
+        # 断开旧连接，防止信号累积
+        try:
+            self.trainer.training_finished.disconnect()
+        except Exception:
+            pass
+
         # 连接训练完成信号
         def on_training_finished(success: bool, message: str):
             self.btn_start.setEnabled(True)
@@ -1046,7 +1054,7 @@ class TrainDialog(QDialog):
                 QMessageBox.information(self, tr("training_completed"), message)
             else:
                 QMessageBox.critical(self, tr("training_failed"), message)
-        
+
         self.trainer.training_finished.connect(on_training_finished)
         
         # 禁用开始按钮

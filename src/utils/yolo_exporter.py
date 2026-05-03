@@ -72,11 +72,12 @@ class YOLOExporter:
         output_dir: str,
         split_ratios: Tuple[float, float, float] = (0.7, 0.2, 0.1),
         copy_images: bool = True,
-        yaml_filename: str = "data.yaml"
+        yaml_filename: str = "data.yaml",
+        random_seed: int = 42
     ):
         """
         导出为YOLO格式
-        
+
         Args:
             image_manager: 图片管理器
             annotation_manager: 标注管理器
@@ -84,6 +85,7 @@ class YOLOExporter:
             output_dir: 输出目录
             split_ratios: 训练集/验证集/测试集比例
             copy_images: 是否复制图片到输出目录
+            random_seed: 随机种子
         """
         # 验证分割比例
         if abs(sum(split_ratios) - 1.0) > 0.01:
@@ -98,7 +100,7 @@ class YOLOExporter:
             raise ValueError("没有图片可导出")
         
         # 划分数据集
-        train_paths, val_paths, test_paths = self._split_dataset(image_paths, split_ratios)
+        train_paths, val_paths, test_paths = self._split_dataset(image_paths, split_ratios, random_seed)
         
         # 导出各个子集
         self._export_subset(
@@ -139,11 +141,12 @@ class YOLOExporter:
     def _split_dataset(
         self,
         image_paths: List[str],
-        split_ratios: Tuple[float, float, float]
+        split_ratios: Tuple[float, float, float],
+        seed: int = 42
     ) -> Tuple[List[str], List[str], List[str]]:
         """划分数据集（委托给 DatasetSplitter.random_split）"""
         from src.utils.dataset_splitter import random_split
-        return random_split(image_paths, split_ratios)
+        return random_split(image_paths, split_ratios, seed)
     
     def _export_subset(
         self,
@@ -202,11 +205,10 @@ class YOLOExporter:
                 shutil.copy2(image_path, output_images_dir / Path(image_path).name)
 
             annotations = annotation_manager.get_annotations(image_path)
-            if annotations:
-                self._write_yolo_file(
-                    annotations, image_width, image_height,
-                    output_labels_dir / f"{Path(image_path).stem}.txt"
-                )
+            self._write_yolo_file(
+                annotations, image_width, image_height,
+                output_labels_dir / f"{Path(image_path).stem}.txt"
+            )
         except Exception as e:
             self.logger.error(f"导出失败 {image_path}: {e}")
 
@@ -272,7 +274,7 @@ class YOLOExporter:
         names_value = self._build_names_config(class_manager)
 
         yaml_data = {
-            "path": str(output_path.absolute()),
+            "path": ".",
             "train": "images/train",
             "val": "images/val",
             "test": "images/test",
@@ -320,7 +322,7 @@ class YOLOExporter:
         names_value = self._build_names_config(class_manager)
 
         config_data = {
-            "path": str(output_path.absolute()),
+            "path": ".",
             "train": ".",
             "val": ".",
             "test": ".",

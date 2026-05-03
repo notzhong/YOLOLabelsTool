@@ -304,13 +304,16 @@ class TrainProgressDialog(QDialog):
                 QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.No
             )
-            
+
             if reply != QMessageBox.Yes:
                 event.ignore()
                 return
-        
+
+            # 用户在训练进行中关闭对话框，停止训练以释放资源
+            self.trainer.stop_training()
+
         # 停止计时器
         if self.timer.isActive():
             self.timer.stop()
-        
+
         event.accept()

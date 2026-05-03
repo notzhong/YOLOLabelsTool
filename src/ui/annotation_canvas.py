@@ -22,9 +22,10 @@ from src.utils.logger import get_logger_simple
 class AnnotationRectItem(QGraphicsRectItem):
     """标注框图形项，支持选中状态和拖拽编辑"""
 
-    def __init__(self, x, y, width, height, annotation, color, canvas, parent=None):
+    def __init__(self, x, y, width, height, annotation, color, canvas, annotation_index=-1, parent=None):
         super().__init__(x, y, width, height, parent)
         self.annotation = annotation
+        self.annotation_index = annotation_index
         self.color = color
         self.canvas = canvas  # 所属 AnnotationCanvas
         self.logger = get_logger_simple(__name__)
@@ -239,7 +240,7 @@ class AnnotationRectItem(QGraphicsRectItem):
         self.canvas.annotation_changed.emit()
 
     def delete_annotation(self):
-        self.canvas.request_delete_annotation(self.annotation)
+        self.canvas.request_delete_annotation(self.annotation, self.annotation_index)
 
 
 class AnnotationCanvas(QGraphicsView):
@@ -247,7 +248,7 @@ class AnnotationCanvas(QGraphicsView):
 
     annotation_created = Signal(object)   # Annotation
     annotation_changed = Signal()          # 标注被修改（拖拽/改类）
-    annotation_deleted = Signal(object)    # Annotation
+    annotation_deleted = Signal(object, int)  # Annotation, index
     status_message = Signal(str)
     scale_changed = Signal(float)
 
@@ -298,8 +299,8 @@ class AnnotationCanvas(QGraphicsView):
             if hasattr(item, 'is_annotation_item') and item.is_annotation_item:
                 self._scene.removeItem(item)
 
-        for annotation in annotations:
-            self._draw_one_annotation(annotation)
+        for i, annotation in enumerate(annotations):
+            self._draw_one_annotation(annotation, i)
 
     def clear_annotation_items(self):
         """仅移除标注相关图形项（保留图片）"""
@@ -325,6 +326,13 @@ class AnnotationCanvas(QGraphicsView):
                 return item.annotation
         return None
 
+    def get_selected_annotation_index(self) -> int:
+        """返回第一个选中的标注在列表中的索引，无选中时返回 -1"""
+        for item in self._scene.items():
+            if hasattr(item, 'annotation_index') and hasattr(item, 'is_selected') and item.is_selected:
+                return item.annotation_index
+        return -1
+
     def fit_to_window(self):
         if self._image_item:
             self.fitInView(self._image_item, Qt.KeepAspectRatio)
@@ -349,13 +357,13 @@ class AnnotationCanvas(QGraphicsView):
                 return pixmap.width(), pixmap.height()
         return None
 
-    def request_delete_annotation(self, annotation: Annotation):
+    def request_delete_annotation(self, annotation: Annotation, index: int = -1):
         """由 AnnotationRectItem 调用，触发删除流程"""
-        self.annotation_deleted.emit(annotation)
+        self.annotation_deleted.emit(annotation, index)
 
     # ---- 内部方法 ----
 
-    def _draw_one_annotation(self, annotation: Annotation):
+    def _draw_one_annotation(self, annotation: Annotation, index: int = -1):
         cm = self.class_manager
         if cm:
             class_info = cm.get_class(annotation.class_id)
@@ -373,7 +381,7 @@ class AnnotationCanvas(QGraphicsView):
         rect_item = AnnotationRectItem(
             annotation.x, annotation.y,
             annotation.width, annotation.height,
-            annotation, color, self
+            annotation, color, self, index
         )
         rect_item.is_annotation_item = True
         rect_item.associated_text_item = None  # 稍后设置
