@@ -188,6 +188,7 @@ ENV/
 
 # Output directory
 output/
+install/
 
 # Config files (except default templates)
 config/*.ini
