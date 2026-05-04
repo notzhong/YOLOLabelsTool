@@ -82,6 +82,7 @@ class MainWindow(QMainWindow):
         self.action_dark_theme.setChecked(self.current_theme == "dark")
         self.action_light_theme.setChecked(self.current_theme == "light")
         self.action_colorful_theme.setChecked(self.current_theme == "colorful")
+        self.action_eyecare_theme.setChecked(self.current_theme == "eyecare")
         self.init_toolbar()
         self.init_statusbar()
         
@@ -192,6 +193,8 @@ class MainWindow(QMainWindow):
             qss_path = Path("qss/light_theme.qss")
         elif theme_name == "colorful":
             qss_path = Path("qss/colorful_theme.qss")
+        elif theme_name == "eyecare":
+            qss_path = Path("qss/eyecare_theme.qss")
         else:
             self.logger.warning(f"未知主题: {theme_name}, 使用默认主题")
             return
@@ -210,6 +213,7 @@ class MainWindow(QMainWindow):
                     self.action_dark_theme.setChecked(theme_name == "dark")
                     self.action_light_theme.setChecked(theme_name == "light")
                     self.action_colorful_theme.setChecked(theme_name == "colorful")
+                    self.action_eyecare_theme.setChecked(theme_name == "eyecare")
                 
                 self.logger.info(f"已应用主题: {theme_name}")
             except Exception as e:
@@ -224,7 +228,7 @@ class MainWindow(QMainWindow):
             title_style = "font-weight: bold; font-size: 14px; color: #333333;"
             status_style = "color: #777777; font-size: 12px;"
         else:
-            # 黑夜/炫彩主题：白色标题，灰色状态
+            # 黑夜/炫彩/护眼主题：白色/暖色标题，灰色状态
             title_style = "font-weight: bold; font-size: 14px; color: #ffffff;"
             status_style = "color: #aaaaaa; font-size: 12px;"
         
@@ -249,6 +253,11 @@ class MainWindow(QMainWindow):
     def switch_to_colorful_theme(self):
         """切换到炫彩主题"""
         self.apply_theme("colorful")
+        self.save_settings()
+
+    def switch_to_eyecare_theme(self):
+        """切换到护眼主题"""
+        self.apply_theme("eyecare")
         self.save_settings()
 
     def create_left_panel(self) -> QWidget:
@@ -595,7 +604,12 @@ class MainWindow(QMainWindow):
         self.action_colorful_theme.setCheckable(True)
         self.action_colorful_theme.triggered.connect(self.switch_to_colorful_theme)
         self.theme_menu.addAction(self.action_colorful_theme)
-        
+
+        self.action_eyecare_theme = QAction(tr("eyecare_theme"), self)
+        self.action_eyecare_theme.setCheckable(True)
+        self.action_eyecare_theme.triggered.connect(self.switch_to_eyecare_theme)
+        self.theme_menu.addAction(self.action_eyecare_theme)
+
         # 模型菜单
         self.model_menu = menubar.addMenu(tr("model"))
         self.model_menu.addAction(self.action_load_model)
@@ -693,7 +707,7 @@ class MainWindow(QMainWindow):
             # 加载主题设置
             if self.config.has_option('preferences', 'theme'):
                 saved_theme = self.config.get('preferences', 'theme')
-                if saved_theme in ['dark', 'light', 'colorful']:
+                if saved_theme in ['dark', 'light', 'colorful', 'eyecare']:
                     self.current_theme = saved_theme
                     self.logger.info(f"加载保存的主题: {self.current_theme}")
             
@@ -1962,6 +1976,7 @@ class MainWindow(QMainWindow):
         self.action_dark_theme.setText(tr("dark_theme"))
         self.action_light_theme.setText(tr("light_theme"))
         self.action_colorful_theme.setText(tr("colorful_theme"))
+        self.action_eyecare_theme.setText(tr("eyecare_theme"))
 
         self.action_chinese.setText(tr("chinese"))
         self.action_english.setText(tr("english"))
