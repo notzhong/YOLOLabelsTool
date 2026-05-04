@@ -921,9 +921,14 @@ class MainWindow(QMainWindow):
         action_delete = menu.addAction(tr("delete_unannotated"))
         action_delete.triggered.connect(self._delete_all_unannotated_images)
 
+        menu.addSeparator()
+
         action_remove = menu.addAction(tr("remove_from_list"))
         action_remove.triggered.connect(self._remove_selected_images)
         action_remove.setEnabled(len(self.image_list_widget.selectedItems()) > 0)
+
+        action_remove_unannotated = menu.addAction(tr("remove_all_unannotated"))
+        action_remove_unannotated.triggered.connect(self._remove_all_unannotated_images)
 
         menu.exec(self.image_list_widget.mapToGlobal(pos))
 
@@ -1021,6 +1026,46 @@ class MainWindow(QMainWindow):
         self.update_image_list()
         self.update_stats()
         self.update_status(tr("images_removed").replace("{count}", str(len(selected))))
+
+    def _remove_all_unannotated_images(self):
+        """从列表中移除所有未标注的图片（不删除本地文件）"""
+        count = self.image_manager.get_image_count()
+        if count == 0:
+            return
+
+        unannotated_indices = []
+        for i in range(count):
+            image_path = self.image_manager.get_image_path(i)
+            if not self.annotation_manager.has_annotations(image_path):
+                unannotated_indices.append(i)
+
+        if not unannotated_indices:
+            QMessageBox.information(self, tr("info"), tr("no_unannotated_images"))
+            return
+
+        reply = QMessageBox.question(
+            self, tr("confirm"),
+            tr("confirm_remove_unannotated").replace("{count}", str(len(unannotated_indices))),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        current_image_path = self.current_image_path
+        current_was_removed = any(
+            self.image_manager.get_image_path(i) == current_image_path
+            for i in unannotated_indices
+        )
+
+        for i in sorted(unannotated_indices, reverse=True):
+            self.image_manager.remove_image(i)
+
+        self._handle_image_after_removal(current_was_removed)
+
+        self.update_image_list()
+        self.update_stats()
+        self.update_status(tr("images_removed").replace("{count}", str(len(unannotated_indices))))
 
     def _handle_image_after_removal(self, current_was_affected: bool):
         """处理移除图片后的当前图片状态"""

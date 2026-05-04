@@ -75,33 +75,45 @@ def _get_unicode_font(size: int) -> ImageFont.FreeTypeFont:
 def _draw_unicode_text(img: np.ndarray, text: str, pos, font_scale: float,
                        color, thickness: int):
     """Draw text (including Unicode) on an OpenCV BGR image using Pillow."""
-    if not text:
-        return
-    font_size = max(10, int(font_scale * 20))
-    font = _get_unicode_font(font_size)
+    _draw_unicode_texts_batch(img, [(text, pos, font_scale, color, thickness)])
 
-    # Convert OpenCV BGR to PIL RGB
+
+def _draw_unicode_texts_batch(img: np.ndarray,
+                              items: list):
+    """Batch-draw multiple Unicode text labels in a single PIL round-trip.
+
+    Each item: (text, pos, font_scale, color, thickness).
+    """
+    if not items:
+        return
+
+    # Convert OpenCV BGR to PIL RGB once
     rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     pil_img = Image.fromarray(rgb)
     draw = ImageDraw.Draw(pil_img)
 
-    # Compute text size for positioning
-    bbox = draw.textbbox((0, 0), text, font=font)
-    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    for text, pos, font_scale, color, thickness in items:
+        if not text:
+            continue
+        font_size = max(10, int(font_scale * 20))
+        font = _get_unicode_font(font_size)
 
-    # Draw text (with background for readability)
-    tx, ty = pos[0], pos[1] - th - 2
-    draw.rectangle([tx - 1, ty - 1, tx + tw + 1, ty + th + 1], fill=(0, 255, 0))
-    draw.text((tx, ty), text, font=font, fill=(0, 0, 0))
+        bbox = draw.textbbox((0, 0), text, font=font)
+        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
 
-    # Convert back to BGR
+        tx, ty = pos[0], pos[1] - th - 2
+        bg = color[::-1] if isinstance(color, tuple) and len(color) == 3 else (0, 255, 0)
+        draw.rectangle([tx - 1, ty - 1, tx + tw + 1, ty + th + 1], fill=bg)
+        draw.text((tx, ty), text, font=font, fill=(0, 0, 0))
+
+    # Convert back to BGR once
     img[:, :, :] = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
 
 try:
     import dxcam
 
     DXCAM_AVAILABLE = True
-except Exception:
+except ImportError:
     DXCAM_AVAILABLE = False
 
 
@@ -198,44 +210,20 @@ class ValidationDialog(QDialog):
         params_group = QGroupBox(tr("model_params"))
         params_layout = QVBoxLayout(params_group)
 
-        conf_row = QHBoxLayout()
-        conf_label = QLabel(tr("confidence"))
-        self.conf_slider = QSlider(Qt.Horizontal)
-        self.conf_slider.setRange(1, 100)
-        self.conf_slider.setValue(int(self.model_manager.confidence_threshold * 100))
-        self.conf_spin = QDoubleSpinBox()
-        self.conf_spin.setRange(0.01, 1.00)
-        self.conf_spin.setSingleStep(0.01)
-        self.conf_spin.setValue(self.model_manager.confidence_threshold)
-        self.conf_spin.setDecimals(2)
-        conf_row.addWidget(conf_label)
-        conf_row.addWidget(self.conf_slider, 1)
-        conf_row.addWidget(self.conf_spin)
-        params_layout.addLayout(conf_row)
-
-        self._conf_binder = SliderSpinBoxBinder(
-            self.conf_slider, self.conf_spin, divider=100,
-            on_value_changed=self.model_manager.set_confidence_threshold
+        self._conf_binder = self._add_slider_row(
+            tr("confidence"), params_layout,
+            slider_range=(1, 100), spin_range=(0.01, 1.00),
+            spin_step=0.01, decimals=2, divider=100,
+            initial=self.model_manager.confidence_threshold,
+            on_value_changed=self.model_manager.set_confidence_threshold,
         )
 
-        iou_row = QHBoxLayout()
-        iou_label = QLabel(tr("iou_threshold"))
-        self.iou_slider = QSlider(Qt.Horizontal)
-        self.iou_slider.setRange(1, 100)
-        self.iou_slider.setValue(int(self.model_manager.iou_threshold * 100))
-        self.iou_spin = QDoubleSpinBox()
-        self.iou_spin.setRange(0.01, 1.00)
-        self.iou_spin.setSingleStep(0.01)
-        self.iou_spin.setValue(self.model_manager.iou_threshold)
-        self.iou_spin.setDecimals(2)
-        iou_row.addWidget(iou_label)
-        iou_row.addWidget(self.iou_slider, 1)
-        iou_row.addWidget(self.iou_spin)
-        params_layout.addLayout(iou_row)
-
-        self._iou_binder = SliderSpinBoxBinder(
-            self.iou_slider, self.iou_spin, divider=100,
-            on_value_changed=self.model_manager.set_iou_threshold
+        self._iou_binder = self._add_slider_row(
+            tr("iou_threshold"), params_layout,
+            slider_range=(1, 100), spin_range=(0.01, 1.00),
+            spin_step=0.01, decimals=2, divider=100,
+            initial=self.model_manager.iou_threshold,
+            on_value_changed=self.model_manager.set_iou_threshold,
         )
 
         left_panel.addWidget(params_group)
@@ -243,24 +231,12 @@ class ValidationDialog(QDialog):
         display_group = QGroupBox(tr("display_settings"))
         display_layout = QVBoxLayout(display_group)
 
-        font_row = QHBoxLayout()
-        font_label = QLabel(tr("label_font_size"))
-        self.font_size_slider = QSlider(Qt.Horizontal)
-        self.font_size_slider.setRange(1, 20)
-        self.font_size_slider.setValue(int(self.label_font_size * 10))
-        self.font_size_spin = QDoubleSpinBox()
-        self.font_size_spin.setRange(0.1, 2.0)
-        self.font_size_spin.setSingleStep(0.1)
-        self.font_size_spin.setValue(self.label_font_size)
-        self.font_size_spin.setDecimals(1)
-        font_row.addWidget(font_label)
-        font_row.addWidget(self.font_size_slider, 1)
-        font_row.addWidget(self.font_size_spin)
-        display_layout.addLayout(font_row)
-
-        self._font_binder = SliderSpinBoxBinder(
-            self.font_size_slider, self.font_size_spin, divider=10,
-            on_value_changed=lambda v: setattr(self, 'label_font_size', v)
+        self._font_binder = self._add_slider_row(
+            tr("label_font_size"), display_layout,
+            slider_range=(1, 20), spin_range=(0.1, 2.0),
+            spin_step=0.1, decimals=1, divider=10,
+            initial=self.label_font_size,
+            on_value_changed=lambda v: setattr(self, 'label_font_size', v),
         )
 
         self.show_conf_check = QCheckBox(tr("show_confidence"))
@@ -325,6 +301,27 @@ class ValidationDialog(QDialog):
                     tr("load_model_failed").replace("{model_path}", model_path),
                 )
 
+    def _add_slider_row(self, label_text: str, parent_layout,
+                        slider_range: tuple, spin_range: tuple,
+                        spin_step: float, decimals: int, divider: float,
+                        initial: float, on_value_changed):
+        """Create a labeled slider + spinbox row and return its binder."""
+        row = QHBoxLayout()
+        row.addWidget(QLabel(label_text))
+        slider = QSlider(Qt.Horizontal)
+        slider.setRange(*slider_range)
+        slider.setValue(int(initial * divider))
+        spin = QDoubleSpinBox()
+        spin.setRange(*spin_range)
+        spin.setSingleStep(spin_step)
+        spin.setValue(initial)
+        spin.setDecimals(decimals)
+        row.addWidget(slider, 1)
+        row.addWidget(spin)
+        parent_layout.addLayout(row)
+        return SliderSpinBoxBinder(slider, spin, divider=divider,
+                                   on_value_changed=on_value_changed)
+
     def _on_source_changed(self):
         source = self._selected_source()
         is_window = source == self.SOURCE_WINDOW
@@ -348,6 +345,7 @@ class ValidationDialog(QDialog):
             self._stop_window_pick(confirmed=False)
             return
 
+        self._pick_saved_hwnd = self.current_hwnd  # 保存已确认的窗口，取消时恢复
         self.picking_window = True
         self.btn_pick_window.setText(tr("picking_window"))
         _user32 = get_user32()
@@ -376,10 +374,15 @@ class ValidationDialog(QDialog):
         if confirmed and self.current_hwnd:
             title = get_window_title(self.current_hwnd)
             self.window_info_label.setText(tr("window_selected").replace("{title}", title))
-        else:
-            # Clear selection if cancelled or not confirmed
-            self.current_hwnd = None
-            self.window_info_label.setText(tr("window_not_selected"))
+        elif not confirmed:
+            # 取消时恢复之前已确认的窗口选择
+            saved = getattr(self, '_pick_saved_hwnd', None)
+            self.current_hwnd = saved
+            if saved:
+                title = get_window_title(saved)
+                self.window_info_label.setText(tr("window_selected").replace("{title}", title))
+            else:
+                self.window_info_label.setText(tr("window_not_selected"))
 
     def _update_window_pick(self):
         _user32 = get_user32()
@@ -751,6 +754,7 @@ class ValidationDialog(QDialog):
 
         if frame is None:
             # Recreate camera once to recover from occasional dxcam invalid state.
+            self._release_camera()
             self.camera = self._create_camera()
             if self.camera:
                 try:
@@ -795,7 +799,14 @@ class ValidationDialog(QDialog):
 
     def _run_detection(self, frame: np.ndarray):
         detections = self.model_manager.predict_image(frame)
+
+        # 无检测时直接使用原帧，避免不必要的内存拷贝
+        if not detections:
+            self._update_preview(frame)
+            return
+
         vis = frame.copy()
+        labels_batch = []
 
         for det in detections:
             x = int(det.get("x", 0))
@@ -810,15 +821,10 @@ class ValidationDialog(QDialog):
                 label += f":{conf:.2f}"
 
             cv2.rectangle(vis, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            _draw_unicode_text(
-                vis,
-                label,
-                (x, y),
-                self.label_font_size,
-                (0, 255, 0),
-                max(1, int(self.label_font_size * 2)),
-            )
+            labels_batch.append((label, (x, y), self.label_font_size,
+                                (0, 255, 0), max(1, int(self.label_font_size * 2))))
 
+        _draw_unicode_texts_batch(vis, labels_batch)
         self._update_preview(vis)
 
     def _update_preview(self, frame: np.ndarray):
