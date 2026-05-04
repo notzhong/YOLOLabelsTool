@@ -86,7 +86,6 @@ excludes = [
     'distutils',
     'venv',
     'ensurepip',
-    'pydoc',
     'lib2to3',
     '__pycache__',
     '*.pyc',
