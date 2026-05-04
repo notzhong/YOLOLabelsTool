@@ -134,6 +134,22 @@ QToolBar {
     padding: 3px;
 }
 
+QToolBar QToolButton {
+    background-color: rgba(26, 26, 46, 180);
+    color: #e0e0ff;
+    border: 1px solid #4a4a8a;
+    padding: 5px 10px;
+    border-radius: 3px;
+}
+
+QToolBar QToolButton:hover {
+    background-color: rgba(233, 69, 96, 120);
+}
+
+QToolBar QToolButton:pressed {
+    background-color: rgba(194, 49, 82, 150);
+}
+
 QToolBar::separator {
     width: 2px;
     background: qlineargradient(y1:0, y2:1, stop:0 transparent, stop:0.5 #e94560, stop:1 transparent);
