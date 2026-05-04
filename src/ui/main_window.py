@@ -645,8 +645,7 @@ class MainWindow(QMainWindow):
         self.toolbar.addAction(self.action_redo)
         self.toolbar.addAction(self.action_delete)
         self.toolbar.addSeparator()
-        self.toolbar.addAction(self.action_zoom_in)
-        self.toolbar.addAction(self.action_zoom_out)
+        self.toolbar.addAction(self.action_auto_annotate)
         self.toolbar.addAction(self.action_fit)
     
     def init_statusbar(self):
