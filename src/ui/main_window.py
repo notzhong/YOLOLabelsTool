@@ -584,9 +584,7 @@ class MainWindow(QMainWindow):
         self.action_save_yaml = QAction(tr("save_yaml"), self)
         self.action_save_yaml.triggered.connect(self.save_classes_to_yaml)
         self.class_menu.addAction(self.action_save_yaml)
-        
-        self.class_menu.addSeparator()
-        
+
         # 主题菜单
         self.theme_menu = menubar.addMenu(tr("theme"))
         
@@ -617,9 +615,6 @@ class MainWindow(QMainWindow):
         self.model_menu.addAction(self.action_validation_window)
         self.model_menu.addSeparator()
         self.model_menu.addAction(self.action_train_model)
-        self.model_menu.addSeparator()
-        self.model_menu.addAction(self.action_auto_annotate)
-        self.model_menu.addAction(self.action_batch_auto_annotate)
         
         # 标注菜单
         self.annotate_menu = menubar.addMenu(tr("annotate"))
