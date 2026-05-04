@@ -372,6 +372,9 @@ class MainWindow(QMainWindow):
         
         self.class_list_widget = QListWidget()
         self.class_list_widget.itemClicked.connect(self.on_class_item_clicked)
+        self.class_list_widget.itemDoubleClicked.connect(self._on_class_item_double_clicked)
+        self.class_list_widget.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.class_list_widget.customContextMenuRequested.connect(self._on_class_list_context_menu)
         class_layout.addWidget(self.class_list_widget)
         
         # 类别操作按钮
@@ -1153,6 +1156,23 @@ class MainWindow(QMainWindow):
             text_color = QColor(0, 0, 0) if brightness > 128 else QColor(255, 255, 255)
             item.setForeground(text_color)
     
+    def _on_class_item_double_clicked(self, item):
+        """类别列表项双击 → 编辑"""
+        self.edit_class()
+
+    def _on_class_list_context_menu(self, pos):
+        """类别列表右键菜单"""
+        item = self.class_list_widget.itemAt(pos)
+        if item is None:
+            return
+        self.class_list_widget.setCurrentItem(item)
+        menu = QMenu(self)
+        action_edit = menu.addAction(tr("edit"))
+        action_edit.triggered.connect(self.edit_class)
+        action_delete = menu.addAction(tr("delete"))
+        action_delete.triggered.connect(self.delete_class)
+        menu.exec(self.class_list_widget.mapToGlobal(pos))
+
     def on_class_item_clicked(self, item):
         """类别列表项点击事件"""
         # 优先从UserRole读取真实class_id，避免行号和class_id错位
