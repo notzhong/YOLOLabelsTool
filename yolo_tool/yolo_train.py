@@ -195,7 +195,19 @@ class YOLOTrainer(QObject):
             self.is_training = True
             self.should_stop = False
             self.training_started.emit()
-            
+
+            # Windows 下 multiprocessing spawn 模式可导致 DataLoader 子进程持有
+            # 的文件句柄与 torch.save 冲突，引发 "I/O operation on closed file"
+            # 限制 workers 为安全上限 2，同时不超过 batch size
+            is_windows = sys.platform == 'win32'
+            workers = self.config.get('workers', 0)
+            if is_windows and workers > 2:
+                safe_workers = min(2, self.config.get('batch', 4))
+                self.log_message.emit(
+                    f"⚠ Windows 下 workers={workers} 可能引发 I/O 错误, 已自动降至 {safe_workers}"
+                )
+                self.config['workers'] = safe_workers
+
             # 加载模型（恢复训练时加载 checkpoint，而非原始预训练模型）
             resume = self.config.get('resume', False)
             model_path = resume if (isinstance(resume, str) and resume) else self.config.get('model_path')
@@ -205,11 +217,11 @@ class YOLOTrainer(QObject):
 
             # 清理模型中可能携带的旧版/非兼容参数（例如某些自定义checkpoint参数）
             self._sanitize_model_overrides()
-            
+
             # 添加进度回调 - 使用健壮的注册方式
             progress_callback = ProgressCallback(self)
             self._register_callbacks(progress_callback)
-            
+
             # 准备训练参数（包含所有市场最优参数）
             train_args = {
                 'data': self.config.get('data_yaml'),
