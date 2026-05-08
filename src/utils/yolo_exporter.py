@@ -274,7 +274,7 @@ class YOLOExporter:
         names_value = self._build_names_config(class_manager)
 
         yaml_data = {
-            "path": ".",
+            "path": str(output_path.resolve()),
             "train": "images/train",
             "val": "images/val",
             "test": "images/test",
@@ -322,7 +322,7 @@ class YOLOExporter:
         names_value = self._build_names_config(class_manager)
 
         config_data = {
-            "path": ".",
+            "path": str(output_path.resolve()),
             "train": ".",
             "val": ".",
             "test": ".",
