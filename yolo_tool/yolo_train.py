@@ -143,27 +143,46 @@ class YOLOTrainer(QObject):
     def setup(self, config: Dict[str, Any]) -> bool:
         """设置训练参数"""
         self.config = config.copy()
-        
+
+        # 确定实际使用的模型路径
+        resume = self.config.get('resume', False)
+        incremental = self.config.get('incremental', False)
+        is_resume = isinstance(resume, str) and resume
+        is_incremental = isinstance(incremental, str) and incremental
+
+        if is_resume:
+            model_file = resume
+        elif is_incremental:
+            model_file = incremental
+        else:
+            model_file = self.config.get('model_path', '')
+
         # 检查必要的参数
-        required_keys = ['model_path', 'data_yaml']
-        for key in required_keys:
-            if key not in config:
-                self.log_message.emit(f"缺少必要参数: {key}")
+        if not is_resume and not is_incremental:
+            if 'model_path' not in config:
+                self.log_message.emit(f"缺少必要参数: model_path")
                 return False
-        
-        # 检查文件是否存在
-        if not Path(config['model_path']).exists():
-            self.log_message.emit(f"模型文件不存在: {config['model_path']}")
+            if not Path(config['model_path']).exists():
+                self.log_message.emit(f"模型文件不存在: {config['model_path']}")
+                return False
+
+        if 'data_yaml' not in config:
+            self.log_message.emit(f"缺少必要参数: data_yaml")
             return False
-        
+
+        # 检查文件是否存在
+        if not Path(model_file).exists():
+            self.log_message.emit(f"模型文件不存在: {model_file}")
+            return False
+
         if not Path(config['data_yaml']).exists():
             self.log_message.emit(f"数据集配置文件不存在: {config['data_yaml']}")
             return False
-        
+
         # 设置默认输出目录
         if 'output_dir' not in self.config:
             self.config['output_dir'] = str(Path.cwd() / "runs" / "train")
-        
+
         self.log_message.emit("训练参数设置完成")
         return True
     
@@ -208,15 +227,29 @@ class YOLOTrainer(QObject):
                 )
                 self.config['workers'] = safe_workers
 
-            # 加载模型（恢复训练时加载 checkpoint，而非原始预训练模型）
+            # 加载模型
+            # 优先级: resume > incremental > pretrained model_path
             resume = self.config.get('resume', False)
-            model_path = resume if (isinstance(resume, str) and resume) else self.config.get('model_path')
+            incremental = self.config.get('incremental', False)
+            is_resume = isinstance(resume, str) and resume
+            is_incremental = isinstance(incremental, str) and incremental
+
+            if is_resume:
+                model_path = resume
+            elif is_incremental:
+                model_path = incremental
+            else:
+                model_path = self.config.get('model_path')
 
             self.log_message.emit(f"加载模型: {model_path}")
             self.model = YOLO(model_path)
 
             # 清理模型中可能携带的旧版/非兼容参数（例如某些自定义checkpoint参数）
-            self._sanitize_model_overrides()
+            # 增量训练需要激进清理，因为旧 checkpoint 的 data/project/nc 等与新训练冲突
+            self._sanitize_model_overrides(aggressive=is_incremental)
+
+            if is_incremental:
+                self.log_message.emit("增量训练模式：已加载训练过的模型权重，将使用全新优化器在新数据集上训练")
 
             # 添加进度回调 - 使用健壮的注册方式
             progress_callback = ProgressCallback(self)
@@ -250,7 +283,7 @@ class YOLOTrainer(QObject):
                 'project': self.config.get('output_dir'),
                 'name': self.config.get('run_name', 'train'),
                 'exist_ok': True,  # 允许覆盖现有运行
-                'resume': bool(resume),
+                'resume': is_resume,
                 # 新增优化器参数
                 'weight_decay': self.config.get('weight_decay', 0.0005),
                 'momentum': self.config.get('momentum', 0.937),
@@ -325,8 +358,13 @@ class YOLOTrainer(QObject):
             
             self.training_finished.emit(False, error_msg)
 
-    def _sanitize_model_overrides(self):
-        """清理模型内置overrides中的不兼容参数，避免影响train参数校验。"""
+    def _sanitize_model_overrides(self, aggressive: bool = False):
+        """清理模型内置overrides中的不兼容参数，避免影响train参数校验。
+
+        Args:
+            aggressive: True 时额外清理上次训练遗留的 data/project/name/classes
+                        等字段，用于增量训练场景。
+        """
         try:
             if not self.model or not hasattr(self.model, 'overrides'):
                 return
@@ -337,12 +375,27 @@ class YOLOTrainer(QObject):
 
             valid_keys = set(DEFAULT_CFG_DICT.keys())
             removed_keys = [k for k in list(overrides.keys()) if k not in valid_keys]
+
+            if aggressive:
+                # 增量训练时必须清除旧训练的参数，让 train() 使用新传入的值
+                aggressive_remove = {'data', 'project', 'name', 'nc', 'classes', 'batch',
+                                     'epochs', 'imgsz', 'device', 'workers', 'cache',
+                                     'optimizer', 'lr0', 'lrf', 'cos_lr', 'patience',
+                                     'close_mosaic', 'rect', 'augment', 'amp', 'plots',
+                                     'verbose', 'mixup', 'degrees', 'shear', 'perspective',
+                                     'flipud', 'fliplr', 'mosaic', 'hsv_h', 'hsv_s', 'hsv_v',
+                                     'weight_decay', 'momentum', 'warmup_epochs',
+                                     'warmup_momentum', 'warmup_bias_lr', 'box', 'cls', 'dfl',
+                                     'erasing', 'dropout', 'seed', 'copy_paste', 'resume'}
+                for k in aggressive_remove:
+                    overrides.pop(k, None)
+
             for k in removed_keys:
                 overrides.pop(k, None)
 
-            if removed_keys:
+            if removed_keys or (aggressive and aggressive_remove):
                 self.log_message.emit(
-                    f"已移除模型内不兼容参数: {', '.join(sorted(removed_keys))}"
+                    f"已清理模型旧训练参数，避免与新训练冲突"
                 )
         except Exception as e:
             self.log_message.emit(f"清理模型overrides失败（忽略）: {e}")
@@ -436,6 +489,7 @@ class YOLOTrainer(QObject):
             'perspective': 0.0,
             'flipud': 0.0,
             'resume': False,
+            'incremental': False,
             # 新增优化器参数
             'weight_decay': 0.0005,
             'momentum': 0.937,

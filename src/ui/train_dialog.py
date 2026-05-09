@@ -199,7 +199,34 @@ class TrainDialog(QDialog):
         resume_layout.addRow("", browse_resume_btn)
         
         layout.addWidget(resume_group)
-        
+
+        # 增量训练
+        incremental_group = QGroupBox(tr("incremental_training", "增量训练"))
+        incremental_layout = QFormLayout(incremental_group)
+
+        self.incremental_checkbox = QCheckBox(tr("incremental_training_checkbox", "启用增量训练"))
+        self.incremental_checkbox.toggled.connect(self.on_incremental_toggled)
+        incremental_layout.addRow(self.incremental_checkbox)
+
+        self.incremental_path_edit = QLineEdit()
+        self.incremental_path_edit.setPlaceholderText(tr("select_incremental_checkpoint", "选择已训练的权重文件 (.pt)"))
+        self.incremental_path_edit.setEnabled(False)
+        incremental_layout.addRow(tr("incremental_checkpoint_label", "权重文件:"), self.incremental_path_edit)
+
+        browse_incremental_btn = QPushButton(tr("browse_button_label"))
+        browse_incremental_btn.clicked.connect(self.browse_incremental_file)
+        browse_incremental_btn.setEnabled(False)
+        self.incremental_browse_btn = browse_incremental_btn
+        incremental_layout.addRow("", browse_incremental_btn)
+
+        self.incremental_hint = QLabel(tr("incremental_hint", "使用已训练的模型权重在新数据集上继续学习，保留旧知识的同时学习新数据"))
+        self.incremental_hint.setWordWrap(True)
+        self.incremental_hint.setStyleSheet("color: gray; font-size: 11px;")
+        self.incremental_hint.setVisible(False)
+        incremental_layout.addRow(self.incremental_hint)
+
+        layout.addWidget(incremental_group)
+
         layout.addStretch()
     
     def create_params_tab(self, parent: QWidget):
@@ -521,6 +548,20 @@ class TrainDialog(QDialog):
         """恢复训练复选框状态改变"""
         self.resume_path_edit.setEnabled(checked)
         self.resume_browse_btn.setEnabled(checked)
+
+        # 恢复训练与增量训练互斥
+        if checked and self.incremental_checkbox.isChecked():
+            self.incremental_checkbox.setChecked(False)
+
+    def on_incremental_toggled(self, checked: bool):
+        """增量训练复选框状态改变"""
+        self.incremental_path_edit.setEnabled(checked)
+        self.incremental_browse_btn.setEnabled(checked)
+        self.incremental_hint.setVisible(checked)
+
+        # 恢复训练与增量训练互斥
+        if checked and self.resume_checkbox.isChecked():
+            self.resume_checkbox.setChecked(False)
     
     def on_augment_toggled(self, checked: bool):
         """数据增强复选框状态改变"""
@@ -560,6 +601,9 @@ class TrainDialog(QDialog):
 
     def browse_resume_file(self):
         self._browse_open_file(self.resume_path_edit, "browse_resume_file_dialog", "PyTorch模型文件 (*.pt)")
+
+    def browse_incremental_file(self):
+        self._browse_open_file(self.incremental_path_edit, "browse_incremental_file_dialog", "PyTorch模型文件 (*.pt)")
     
     def save_config(self):
         """保存训练配置到文件"""
@@ -621,6 +665,10 @@ class TrainDialog(QDialog):
         config['resume'] = self.resume_checkbox.isChecked()
         if config['resume']:
             config['resume'] = self.resume_path_edit.text()
+
+        config['incremental'] = self.incremental_checkbox.isChecked()
+        if config['incremental']:
+            config['incremental'] = self.incremental_path_edit.text()
         
         # 训练参数
         config['epochs'] = self.epochs_spin.value()
@@ -693,6 +741,12 @@ class TrainDialog(QDialog):
         self.resume_checkbox.setChecked(bool(resume))
         if isinstance(resume, str) and resume:
             self.resume_path_edit.setText(resume)
+
+        # 增量训练
+        incremental = self.config.get('incremental', False)
+        self.incremental_checkbox.setChecked(bool(incremental))
+        if isinstance(incremental, str) and incremental:
+            self.incremental_path_edit.setText(incremental)
         
         # 训练参数
         self.epochs_spin.setValue(self.config.get('epochs', 300))
@@ -779,9 +833,10 @@ class TrainDialog(QDialog):
         config = self.collect_config_from_ui()
 
         is_resume = config['resume'] and isinstance(config['resume'], str) and Path(config['resume']).exists()
+        is_incremental = config['incremental'] and isinstance(config['incremental'], str)
 
-        # 恢复训练时不需要 model_path
-        if not is_resume:
+        # 恢复训练 / 增量训练时不需要预训练 model_path
+        if not is_resume and not is_incremental:
             if not config['model_path']:
                 QMessageBox.warning(self, tr("warning"), tr("validation_failed_model_file"))
                 self.model_path_edit.setFocus()
@@ -807,6 +862,13 @@ class TrainDialog(QDialog):
             if not Path(config['resume']).exists():
                 QMessageBox.warning(self, tr("warning"), tr("checkpoint_file_not_exists") + f" {config['resume']}")
                 self.resume_path_edit.setFocus()
+                return False
+
+        # 如果启用了增量训练，检查权重文件
+        if is_incremental:
+            if not Path(config['incremental']).exists():
+                QMessageBox.warning(self, tr("warning"), tr("incremental_file_not_exists", "增量训练权重文件不存在") + f" {config['incremental']}")
+                self.incremental_path_edit.setFocus()
                 return False
 
         return True
@@ -879,7 +941,8 @@ class TrainDialog(QDialog):
             self.data_yaml_edit,
             self.output_dir_edit,
             self.run_name_edit,
-            self.resume_path_edit
+            self.resume_path_edit,
+            self.incremental_path_edit
         ]
         
         for text_edit in text_edits:
@@ -938,6 +1001,7 @@ class TrainDialog(QDialog):
         # 复选框
         check_boxes = [
             self.resume_checkbox,
+            self.incremental_checkbox,
             self.rect_checkbox,
             self.cache_checkbox,
             self.amp_checkbox,
