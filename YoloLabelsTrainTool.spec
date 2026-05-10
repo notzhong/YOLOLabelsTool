@@ -75,6 +75,8 @@ hiddenimports += [
     'ultralytics.data.loaders',
     'ultralytics.cfg',
     'ultralytics.solutions',
+    # 模型导出对话框（方法内动态导入，PyInstaller 可能漏掉）
+    'src.ui.export_dialog',
 ]
 
 # ===============================
