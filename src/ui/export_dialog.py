@@ -59,13 +59,11 @@ class ExportWorker(QThread):
     progress = Signal(str)
     finished = Signal(bool, str)
 
-    def __init__(self, model_path: str, fmt: str, output_dir: str,
-                 output_name: str, imgsz: int):
+    def __init__(self, model_path: str, fmt: str, output_file: str, imgsz: int):
         super().__init__()
         self.model_path = model_path
         self.fmt = fmt
-        self.output_dir = output_dir
-        self.output_name = output_name
+        self.output_file = output_file
         self.imgsz = imgsz
 
     def run(self):
@@ -76,29 +74,19 @@ class ExportWorker(QThread):
             model = YOLO(self.model_path)
 
             self.progress.emit(f"开始导出为 {self.fmt} 格式...")
+            dest = Path(self.output_file)
+
+            # ultralytics 默认导出到源模型所在目录，导出后移动到用户指定路径
             result = model.export(format=self.fmt, imgsz=self.imgsz, device=0)
 
-            # ultralytics 默认导出到源模型所在目录，需移动到用户指定位置
-            if isinstance(result, str):
+            if isinstance(result, str) and Path(result).exists():
                 src = Path(result)
             else:
-                # 推导默认导出路径：与源模型同目录、同 stem、扩展名对应
+                # 回退：推导默认导出路径
                 src = Path(self.model_path).with_suffix(EXPORT_EXT.get(self.fmt, ""))
 
-            suffix = src.suffix  # e.g. ".engine", ".onnx"
-            # 对目录格式导出（saved_model, mlpackage），保留整个目录名
-            if suffix and suffix in {".onnx", ".engine", ".tflite", ".xml"}:
-                # 单文件导出
-                dest_name = self.output_name + suffix
-            else:
-                # 目录导出（saved_model 等无扩展名，用整个目录名）
-                dest_name = self.output_name + suffix if suffix else self.output_name
-
-            dest_dir = Path(self.output_dir)
-            dest_dir.mkdir(parents=True, exist_ok=True)
-            dest = dest_dir / dest_name
-
             if src.exists():
+                dest.parent.mkdir(parents=True, exist_ok=True)
                 if src.is_dir():
                     if dest.exists():
                         shutil.rmtree(dest)
@@ -131,10 +119,12 @@ class ExportDialog(QDialog):
         self.init_ui()
         self.setWindowTitle(tr("export_model", "导出模型"))
         self.setModal(True)
-        self.resize(550, 460)
+        self.resize(550, 420)
 
         # 连接模型路径变更以自动检测 imgsz
         self.model_edit.textChanged.connect(self._on_model_edit_changed)
+        # 格式变更时同步更新输出文件扩展名
+        self.format_combo.currentTextChanged.connect(self._on_format_changed_sync_ext)
 
         # 自动检测已加载模型的训练尺寸
         if default_model_path:
@@ -177,17 +167,14 @@ class ExportDialog(QDialog):
         options_group = QGroupBox(tr("export_options", "导出选项"))
         options_layout = QFormLayout(options_group)
 
-        self.output_dir_edit = QLineEdit()
-        self.output_dir_edit.setPlaceholderText(tr("select_output_dir", "选择导出目录"))
-        options_layout.addRow(tr("output_dir_label", "输出目录:"), self.output_dir_edit)
+        self.output_file_edit = QLineEdit()
+        self.output_file_edit.setPlaceholderText(
+            tr("select_output_file", "选择导出文件路径，如 D:/model.engine"))
+        options_layout.addRow(tr("output_file_label", "输出文件:"), self.output_file_edit)
 
         browse_output_btn = QPushButton(tr("browse_button_label", "浏览..."))
-        browse_output_btn.clicked.connect(self.browse_output_dir)
+        browse_output_btn.clicked.connect(self.browse_output_file)
         options_layout.addRow("", browse_output_btn)
-
-        self.output_name_edit = QLineEdit("model")
-        self.output_name_edit.setPlaceholderText(tr("export_name_placeholder", "导出的文件名（不含扩展名）"))
-        options_layout.addRow(tr("export_name", "文件名:"), self.output_name_edit)
 
         self.imgsz_spin = QSpinBox()
         self.imgsz_spin.setRange(32, 4096)
@@ -235,6 +222,17 @@ class ExportDialog(QDialog):
         else:
             self.format_hint.setText("")
 
+    def _on_format_changed_sync_ext(self, fmt: str):
+        """格式变更时同步更新输出文件路径的扩展名"""
+        ext = EXPORT_EXT.get(fmt, "")
+        if not ext:
+            return
+        current = self.output_file_edit.text().strip()
+        if not current:
+            return
+        p = Path(current)
+        self.output_file_edit.setText(str(p.with_suffix(ext)))
+
     def _detect_model_imgsz(self, model_path: str) -> int | None:
         """从模型 checkpoint 中读取训练时的 imgsz，失败返回 None"""
         try:
@@ -246,7 +244,6 @@ class ExportDialog(QDialog):
         if ckpt is None:
             return None
 
-        # 尝试多个可能的存储位置（兼容不同 ultralytics 版本）
         candidates = []
         if hasattr(ckpt, "overrides") and isinstance(ckpt.overrides, dict):
             candidates.append(ckpt.overrides)
@@ -271,14 +268,19 @@ class ExportDialog(QDialog):
             self._on_model_path_changed(path)
 
     def _on_model_path_changed(self, path: str):
-        """模型路径变更时自动检测训练尺寸"""
-        if path and Path(path).exists() and path.endswith(".pt"):
-            detected = self._detect_model_imgsz(path)
-            if detected is not None:
-                self.imgsz_spin.setValue(int(detected))
-            # 自动填入默认文件名（源模型 stem，去掉 best/last 后缀）
-            stem = Path(path).stem
-            self.output_name_edit.setText(stem)
+        """模型路径变更时自动检测训练尺寸并更新输出路径"""
+        if not path or not Path(path).exists() or not path.endswith(".pt"):
+            return
+
+        stem = Path(path).stem
+        detected = self._detect_model_imgsz(path)
+        if detected is not None:
+            self.imgsz_spin.setValue(int(detected))
+
+        # 自动填入输出文件路径（与源模型同目录、同名、扩展名按格式）
+        ext = EXPORT_EXT.get(self.format_combo.currentText(), "")
+        default_output = str(Path(path).with_name(stem + ext))
+        self.output_file_edit.setText(default_output)
 
     def browse_model(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -289,20 +291,24 @@ class ExportDialog(QDialog):
             self._on_model_path_changed(path)
             ExportDialog._last_browse_path = str(Path(path).parent)
 
-    def browse_output_dir(self):
-        path = QFileDialog.getExistingDirectory(
-            self, tr("browse_output_dir_dialog", "选择导出目录"),
-            ExportDialog._last_browse_path)
+    def browse_output_file(self):
+        fmt = self.format_combo.currentText()
+        ext = EXPORT_EXT.get(fmt, "")
+        filter_str = f"{fmt} 文件 (*{ext})" if ext else f"{fmt} 文件"
+        default_dir = ExportDialog._last_browse_path
+
+        path, _ = QFileDialog.getSaveFileName(
+            self, tr("browse_output_file_dialog", "选择导出文件路径"),
+            default_dir, filter_str)
         if path:
-            self.output_dir_edit.setText(path)
-            ExportDialog._last_browse_path = path
+            # 确保扩展名匹配当前格式
+            if ext and not path.endswith(ext):
+                path += ext
+            self.output_file_edit.setText(path)
+            ExportDialog._last_browse_path = str(Path(path).parent)
 
     def check_dependencies(self, fmt: str) -> List[str]:
-        """检查目标格式所需的依赖包，返回缺失的包名列表。
-
-        先尝试 import 模块，失败时再通过 importlib.metadata 按 pip 包名检测，
-        以支持 onnxruntime-gpu 等包名含 '-' 无法直接 import 的包。
-        """
+        """检查目标格式所需的依赖包，返回缺失的包名列表。"""
         missing = []
         pkgs = FORMAT_DEPENDENCIES.get(fmt, [])
         for pkg in pkgs:
@@ -326,17 +332,9 @@ class ExportDialog(QDialog):
             QMessageBox.warning(self, tr("warning", "警告"), tr("model_file_not_exists", "模型文件不存在"))
             return False
 
-        output_dir = self.output_dir_edit.text().strip()
-        if not output_dir:
-            QMessageBox.warning(self, tr("warning", "警告"), tr("no_output_dir", "请选择导出目录"))
-            return False
-        if not Path(output_dir).exists():
-            QMessageBox.warning(self, tr("warning", "警告"), tr("output_dir_not_exists", "导出目录不存在"))
-            return False
-
-        output_name = self.output_name_edit.text().strip()
-        if not output_name:
-            QMessageBox.warning(self, tr("warning", "警告"), tr("no_export_name", "请输入导出文件名"))
+        output_file = self.output_file_edit.text().strip()
+        if not output_file:
+            QMessageBox.warning(self, tr("warning", "警告"), tr("no_output_file", "请选择输出文件路径"))
             return False
 
         return True
@@ -363,8 +361,7 @@ class ExportDialog(QDialog):
                 return
 
         model_path = self.model_edit.text().strip()
-        output_dir = self.output_dir_edit.text().strip()
-        output_name = self.output_name_edit.text().strip()
+        output_file = self.output_file_edit.text().strip()
         imgsz = self.imgsz_spin.value()
 
         self.export_btn.setEnabled(False)
@@ -372,9 +369,8 @@ class ExportDialog(QDialog):
         self.log_text.setVisible(True)
         self.log_text.clear()
 
-        # 将显示名称映射为 ultralytics 格式键（如 "TensorRT" → "engine"）
         fmt_key = EXPORT_FORMATS.get(fmt, fmt.lower())
-        self.worker = ExportWorker(model_path, fmt_key, output_dir, output_name, imgsz)
+        self.worker = ExportWorker(model_path, fmt_key, output_file, imgsz)
         self.worker.progress.connect(self.on_progress)
         self.worker.finished.connect(self.on_finished)
         self.worker.start()
