@@ -2,6 +2,7 @@
 模型导出对话框
 """
 import importlib
+import importlib.metadata
 from pathlib import Path
 from typing import Dict, List
 
@@ -17,9 +18,10 @@ from src.utils.logger import get_logger_simple
 
 logger = get_logger_simple(__name__)
 
+# 格式 → 所需 pip 包名列表（可能与 import 名不同，如 onnxruntime-gpu）
 FORMAT_DEPENDENCIES: Dict[str, List[str]] = {
-    "ONNX": ["onnx", "onnxslim", "onnxruntime"],
-    "TensorRT": ["onnx", "onnxslim", "onnxruntime"],
+    "ONNX": ["onnx", "onnxslim", "onnxruntime-gpu", "onnxruntime"],
+    "TensorRT": ["onnx", "onnxslim", "onnxruntime-gpu", "onnxruntime"],
     "OpenVINO": ["openvino"],
     "CoreML": ["coremltools"],
     "TFLite": ["tensorflow"],
@@ -201,13 +203,24 @@ class ExportDialog(QDialog):
             ExportDialog._last_browse_path = path
 
     def check_dependencies(self, fmt: str) -> List[str]:
-        """检查目标格式所需的依赖包，返回缺失的包名列表"""
+        """检查目标格式所需的依赖包，返回缺失的包名列表。
+
+        先尝试 import 模块，失败时再通过 importlib.metadata 按 pip 包名检测，
+        以支持 onnxruntime-gpu 等包名含 '-' 无法直接 import 的包。
+        """
         missing = []
         pkgs = FORMAT_DEPENDENCIES.get(fmt, [])
         for pkg in pkgs:
+            # 按模块名导入
             try:
                 importlib.import_module(pkg)
+                continue
             except ImportError:
+                pass
+            # 按 pip 包名检测（包名含 - 时模块导入会失败）
+            try:
+                importlib.metadata.version(pkg)
+            except importlib.metadata.PackageNotFoundError:
                 missing.append(pkg)
         return missing
 
