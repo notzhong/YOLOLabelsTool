@@ -548,6 +548,9 @@ class MainWindow(QMainWindow):
         self.action_train_model = QAction(tr("train_model"), self)
         self.action_train_model.setShortcut("Ctrl+T")
         self.action_train_model.triggered.connect(self.train_model)
+
+        self.action_export_model = QAction(tr("export_model"), self)
+        self.action_export_model.triggered.connect(self.export_model)
     
     def init_menus(self):
         """初始化菜单栏"""
@@ -615,7 +618,8 @@ class MainWindow(QMainWindow):
         self.model_menu.addAction(self.action_validation_window)
         self.model_menu.addSeparator()
         self.model_menu.addAction(self.action_train_model)
-        
+        self.model_menu.addAction(self.action_export_model)
+
         # 标注菜单
         self.annotate_menu = menubar.addMenu(tr("annotate"))
         self.annotate_menu.addAction(self.action_auto_annotate)
@@ -1889,7 +1893,18 @@ class MainWindow(QMainWindow):
         if dialog.exec():
             # 对话框已确认，训练将在对话框内部启动
             self.update_status(tr("training_config_complete"))
-    
+
+    def export_model(self):
+        """导出模型"""
+        default_model_path = ""
+        if self.model_manager.is_model_loaded():
+            model_info = self.model_manager.get_model_info()
+            default_model_path = model_info.get("path", "")
+
+        from .export_dialog import ExportDialog
+        dialog = ExportDialog(self, default_model_path)
+        dialog.exec()
+
     def switch_language(self, language: str):
         """切换语言"""
         from src.utils.i18n import TranslationManager, tr
@@ -1961,6 +1976,7 @@ class MainWindow(QMainWindow):
         self.action_load_model.setText(tr("load_model"))
         self.action_model_info.setText(tr("model_info"))
         self.action_train_model.setText(tr("train_model"))
+        self.action_export_model.setText(tr("export_model"))
         self.action_auto_annotate.setText(tr("auto_annotate"))
         self.action_batch_auto_annotate.setText(tr("batch_auto_annotate"))
 
