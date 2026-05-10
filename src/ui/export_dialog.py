@@ -99,7 +99,11 @@ class ExportDialog(QDialog):
         self.init_ui()
         self.setWindowTitle(tr("export_model", "导出模型"))
         self.setModal(True)
-        self.resize(550, 400)
+        self.resize(550, 420)
+
+        # 自动检测已加载模型的训练尺寸
+        if default_model_path:
+            self._on_model_path_changed(default_model_path)
 
     def init_ui(self):
         layout = QVBoxLayout(self)
@@ -146,6 +150,14 @@ class ExportDialog(QDialog):
         browse_output_btn.clicked.connect(self.browse_output_dir)
         options_layout.addRow("", browse_output_btn)
 
+        from PySide6.QtWidgets import QSpinBox
+        self.imgsz_spin = QSpinBox()
+        self.imgsz_spin.setRange(32, 4096)
+        self.imgsz_spin.setValue(640)
+        self.imgsz_spin.setSingleStep(32)
+        self.imgsz_spin.setToolTip(tr("export_imgsz_tip", "导出模型的输入尺寸，应与训练时使用的尺寸一致"))
+        options_layout.addRow(tr("export_imgsz", "输入尺寸:"), self.imgsz_spin)
+
         layout.addWidget(options_group)
 
         # 进度和日志
@@ -186,12 +198,33 @@ class ExportDialog(QDialog):
         else:
             self.format_hint.setText("")
 
+    def _detect_model_imgsz(self, model_path: str) -> int | None:
+        """从模型 checkpoint 中读取训练时的 imgsz，失败返回 None"""
+        try:
+            import torch
+            ckpt = torch.load(model_path, map_location="cpu", weights_only=False)
+            if ckpt is not None:
+                overrides = getattr(ckpt, "overrides", None) or ckpt.get("overrides", {})
+                if isinstance(overrides, dict):
+                    return overrides.get("imgsz")
+        except Exception:
+            pass
+        return None
+
+    def _on_model_path_changed(self, path: str):
+        """模型路径变更时自动检测训练尺寸"""
+        if path and Path(path).exists() and path.endswith(".pt"):
+            detected = self._detect_model_imgsz(path)
+            if detected is not None:
+                self.imgsz_spin.setValue(int(detected))
+
     def browse_model(self):
         path, _ = QFileDialog.getOpenFileName(
             self, tr("browse_model_file_dialog", "选择模型文件"),
             ExportDialog._last_browse_path, "PyTorch模型文件 (*.pt)")
         if path:
             self.model_edit.setText(path)
+            self._on_model_path_changed(path)
             ExportDialog._last_browse_path = str(Path(path).parent)
 
     def browse_output_dir(self):
@@ -266,13 +299,14 @@ class ExportDialog(QDialog):
 
         model_path = self.model_edit.text().strip()
         output_dir = self.output_dir_edit.text().strip()
+        imgsz = self.imgsz_spin.value()
 
         self.export_btn.setEnabled(False)
         self.progress_bar.setVisible(True)
         self.log_text.setVisible(True)
         self.log_text.clear()
 
-        self.worker = ExportWorker(model_path, fmt, output_dir, imgsz=640)
+        self.worker = ExportWorker(model_path, fmt, output_dir, imgsz=imgsz)
         self.worker.progress.connect(self.on_progress)
         self.worker.finished.connect(self.on_finished)
         self.worker.start()
