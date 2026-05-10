@@ -65,6 +65,11 @@ _FMT_KEY_EXT: Dict[str, str] = {
     "ncnn": "",
 }
 
+# 部分格式在导出主文件外还生成伴生文件（如 OpenVINO .xml + .bin）
+_COMPANION_EXTS: Dict[str, List[str]] = {
+    "openvino": [".bin"],
+}
+
 
 class ExportWorker(QThread):
     """导出工作线程"""
@@ -88,28 +93,18 @@ class ExportWorker(QThread):
             self.progress.emit(f"开始导出为 {self.fmt} 格式...")
             dest = Path(self.output_file)
 
-            # ultralytics 导出到源模型目录，导出后移动到用户指定路径
             result = model.export(format=self.fmt, imgsz=self.imgsz, device=0)
 
-            # result 可能是 str / Path / None，统一转为 Path
             if result is not None:
                 src = Path(str(result))
             else:
                 src = None
 
             if src is None or not src.exists():
-                # 回退：推导默认导出路径（源模型同目录、同 stem、对应扩展名）
-                src = Path(self.model_path).with_suffix(
-                    _FMT_KEY_EXT.get(self.fmt, ""))
+                src = self._derive_src(Path(self.model_path))
 
             if src.exists():
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                if src.is_dir():
-                    if dest.exists():
-                        shutil.rmtree(dest)
-                else:
-                    dest.unlink(missing_ok=True)  # 覆盖已存在的同名文件
-                shutil.move(str(src), str(dest))
+                self._move_export(src, dest)
                 self.progress.emit("导出完成")
                 self.finished.emit(True, f"模型已成功导出到:\n{dest}")
             else:
@@ -118,6 +113,43 @@ class ExportWorker(QThread):
             import traceback
             self.progress.emit(f"导出失败: {e}")
             self.finished.emit(False, f"导出失败:\n{traceback.format_exc()}")
+
+    def _derive_src(self, model_path: Path) -> Path:
+        """推导导出文件/目录的默认路径"""
+        ext = _FMT_KEY_EXT.get(self.fmt, "")
+        if ext:
+            return model_path.with_suffix(ext)
+        # 目录型格式：补上 ultralytics 惯例后缀
+        _dir_suffix = {
+            "saved_model": "_saved_model",
+            "paddle": "_paddle_model",
+            "ncnn": "_ncnn_model",
+        }
+        suffix = _dir_suffix.get(self.fmt, f"_{self.fmt}")
+        return model_path.parent / (model_path.stem + suffix)
+
+    def _move_export(self, src: Path, dest: Path):
+        """将导出的 src 移动到 dest，同时处理伴生文件"""
+        dest.parent.mkdir(parents=True, exist_ok=True)
+
+        if src.is_dir():
+            # 目录型格式（CoreML .mlpackage、TF SavedModel、Paddle、ncnn）
+            if dest.exists():
+                shutil.rmtree(dest)
+            shutil.move(str(src), str(dest))
+        else:
+            # 单文件格式（ONNX、TensorRT、OpenVINO、TFLite）
+            dest.unlink(missing_ok=True)
+            shutil.move(str(src), str(dest))
+
+            # 移伴生文件（如 OpenVINO .bin、ncnn .param/.bin）
+            companion_exts = _COMPANION_EXTS.get(self.fmt, [])
+            for comp_ext in companion_exts:
+                comp_src = src.with_suffix(comp_ext)
+                if comp_src.exists():
+                    comp_dest = dest.with_suffix(comp_ext)
+                    comp_dest.unlink(missing_ok=True)
+                    shutil.move(str(comp_src), str(comp_dest))
 
 
 class ExportDialog(QDialog):
