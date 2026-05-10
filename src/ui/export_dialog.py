@@ -1,8 +1,9 @@
 """
 模型导出对话框
 """
+import importlib
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
@@ -15,6 +16,17 @@ from src.utils.i18n import tr
 from src.utils.logger import get_logger_simple
 
 logger = get_logger_simple(__name__)
+
+FORMAT_DEPENDENCIES: Dict[str, List[str]] = {
+    "ONNX": ["onnx", "onnxslim", "onnxruntime"],
+    "TensorRT": ["onnx", "onnxslim", "onnxruntime"],
+    "OpenVINO": ["openvino"],
+    "CoreML": ["coremltools"],
+    "TFLite": ["tensorflow"],
+    "TF SavedModel": ["tensorflow"],
+    "PaddlePaddle": ["paddlepaddle"],
+    "ncnn": [],
+}
 
 EXPORT_FORMATS: Dict[str, str] = {
     "ONNX": "onnx",
@@ -188,6 +200,17 @@ class ExportDialog(QDialog):
             self.output_dir_edit.setText(path)
             ExportDialog._last_browse_path = path
 
+    def check_dependencies(self, fmt: str) -> List[str]:
+        """检查目标格式所需的依赖包，返回缺失的包名列表"""
+        missing = []
+        pkgs = FORMAT_DEPENDENCIES.get(fmt, [])
+        for pkg in pkgs:
+            try:
+                importlib.import_module(pkg)
+            except ImportError:
+                missing.append(pkg)
+        return missing
+
     def validate(self) -> bool:
         model_path = self.model_edit.text().strip()
         if not model_path:
@@ -211,8 +234,24 @@ class ExportDialog(QDialog):
         if not self.validate():
             return
 
-        model_path = self.model_edit.text().strip()
         fmt = self.format_combo.currentText()
+        missing = self.check_dependencies(fmt)
+        if missing:
+            reply = QMessageBox.question(
+                self,
+                tr("missing_deps_title", "缺少依赖"),
+                tr("missing_deps_msg", "导出 {fmt} 需要以下依赖包，是否继续？\n\n{packages}\n\n可运行以下命令安装：\n{cmd}\n\n如已安装请忽略，导出可能仍会失败。").format(
+                    fmt=fmt,
+                    packages=", ".join(missing),
+                    cmd="pip install " + " ".join(missing)
+                ),
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            if reply == QMessageBox.No:
+                return
+
+        model_path = self.model_edit.text().strip()
         output_dir = self.output_dir_edit.text().strip()
 
         self.export_btn.setEnabled(False)
