@@ -475,62 +475,34 @@ A: 通过菜单"语言 → 中文/英文"切换界面语言，切换会立即生
 
 ## 更新日志
 
-### v2.2.0 (2026-05-09)
-- **增量训练**：新增增量训练模式，支持在已训练权重基础上用新数据继续学习，与恢复训练互斥
-- **data.yaml 优化**：导出路径由 `.` 改为绝对路径，避免训练时路径解析失败
-- **Windows 兼容修复**：训练时 workers 自动限制为 ≤2，解决 `torch.save` 的 "I/O operation on closed file" 崩溃问题
+### v2.3.0 (2026-05-10)
+- **模型导出**：新增模型导出功能，支持 ONNX / TensorRT / OpenVINO / CoreML / TFLite / TF SavedModel / PaddlePaddle / ncnn 八种格式
+- **导出增强**：自动检测模型训练尺寸、自定义文件名、切换格式同步扩展名、导出后自动移动到指定路径、缺失依赖弹窗提示安装命令
+- **增量训练**：支持在已训练权重基础上用新数据继续学习，与恢复训练互斥
+- **修复**：data.yaml 导出路径改为绝对路径、Windows 下 workers 自动限制 ≤2 防止 `torch.save` I/O 错误、导出文件移动兼容 Path/str 返回值、OpenVINO 伴生文件 (.bin) 同步移动
 
-### v2.1.0 (2026-05-04)
-- **图片列表右键菜单**：删除所有未标注图片（连本地文件一起删）、从列表中移除选中图片（不删文件）、支持 Ctrl/Shift 多选
-- **修复数据集导出 Bug**："Export Dataset Split" 补全缺失的 data.yaml；未标注图片现在生成空 label 文件保证 images/labels 一致
-- **修复训练多个问题**：
-  - 多次训练时信号累积连接导致重复弹窗
-  - lr0 默认值不一致（UI 和训练器各有一个默认值）
-  - TQDM stdout 为 None 崩溃、GBK 编码无法处理 emoji 字符
-  - multiprocessing 子进程在 Windows 上重新启动 GUI
-  - epoch 显示 0-indexed 改为 1-indexed
-- **优化训练默认参数**：batch 16→4、workers 8→4（适配 8GB 显存）
-- **导出改进**：data.yaml 改用相对路径、random_split 增加固定种子保证可复现
-- **标注匹配改进**：用索引替代坐标匹配，消除同位置同类别标注误删
-- **UI 改进**：关闭训练进度对话框自动停止训练、单张自动标注增加覆盖确认、resume 模式不再强制要求 model_path
-- **图片列表右键菜单**：新增"移除所有未标注图片"（不删文件）、删除/移除分组显示
-- **类别列表改进**：双击类别直接编辑、右键弹出编辑/删除菜单
-- **护眼主题**：新增暖色暗调护眼主题（豆沙绿底色 + 暖奶油文字），减少蓝光
-- **验证窗口6项优化**：dxcam 资源泄漏修复、Unicode 文本批量绘制性能优化、无检测跳帧等
-- **打包修复**：移除 unittest/pydoc 排除项解决 torch/scipy 导入失败、全面收集 ultralytics 子模块
+### v2.2.0 (2026-05-04)
+- **右键菜单**：删除/移除未标注图片、Ctrl/Shift 多选批量操作
+- **标注匹配**：改用索引替代坐标匹配，消除误删
+- **类别管理**：双击/右键快速重命名和编辑
+- **护眼主题**：新增暖色暗调护眼主题
+- **验证窗口优化**：dxcam 资源泄漏修复、Unicode 批量绘制性能优化
+- **训练修复**：信号累积弹窗、lr0 默认值不一致、TQDM/GBK/epoch 显示等 6 项修复
+- **打包修复**：移除 unittest/pydoc 排除项解决 torch/scipy 导入失败
 
-### v2.0.0 (2026-05-01)
-- **提取标注画布组件**：将 QGraphicsView 封装为独立 AnnotationCanvas 类（~520 行），主窗口仅通过信号通信
-- **提取统计/模型面板**：StatsPanel 和 ModelInfoPanel 独立为 panels.py，消除 ~280 行和 ~50 个 hasattr 守卫
-- **提取窗口选择器组件**：WindowHighlighter 和 RegionSelector 独立为 region_selector.py，Win32 API 辅助函数提取为 win32_helpers.py
-- **数据集导出统一**：DatasetSplitter 委托 YOLOExporter 处理文件 I/O，消除三个重复方法
-- **LRU 图片缓存**：ImageManager 改用 OrderedDict 实现 LRU 淘汰策略
-- **国际化增强**：TranslationManager 启动时预缓存所有语言，新增 en_US 回退链
-- **新增快捷键**：←/→ 翻图、Tab/Shift+Tab 循环切换类别
-- **切图自动保存**：切换图片时自动保存当前标注
-- **简化导出流程**：YOLO 导出合并为单次文件对话框
-- **新增单元测试**：80 个测试用例覆盖核心数据类、命令模式、类别管理和图片缓存
-- **修复 bug**：补回提取画布时丢失的 add_annotation_with_command 方法定义
-- **清除冗余代码**：消除 12 处局部 tr() 导入、10 个重复的滑块绑定方法、死代码 _split_paths
+### v2.1.0 (2026-05-01)
+- **组件提取**：AnnotationCanvas、StatsPanel、ModelInfoPanel、WindowHighlighter、RegionSelector 独立封装
+- **数据集导出统一**：DatasetSplitter 委托 YOLOExporter，消除重复方法
+- **LRU 图片缓存**、**国际化 en_US 回退链**、**切图自动保存**
+- **80 个单元测试**覆盖核心数据类、命令模式、类别管理
 
-### v1.6.0 (2026-04-26)
-- **重构 YOLO 导出**：提取通用 `annotation_to_yolo_lines()` 函数，消除 yolo_exporter 与 dataset_splitter 间的标签写入重复代码
-- **优化统计面板**：`update_statistics_panel()` 改用缓存字典，消除 O(n) 磁盘 I/O
-- **修复撤销/重做按钮匹配**：移除按翻译文本匹配工具栏按钮的脆弱逻辑，改用 QAction 对象直接绑定
-- **限制撤销栈深度**：添加 `MAX_UNDO_SIZE = 100`，防止内存无限增长
-- **修复类别 ID 空洞**：删除类别时始终更新 `_next_class_id`，避免 ID 跳跃浪费
-- **重构模型推理**：提取 `_process_boxes()` 共享方法，消除 `predict()` 与 `predict_image()` 中的重复 box 处理代码
-- **优化十字准线渲染**：复用图形项替代每次 mouseMove 创建/销毁，减少 GC 压力
-- **清理 i18n 死代码**：移除未使用的 `_fallback_translations` 与 QTranslator 安装逻辑
-- **精简浏览方法**：将 train_dialog 四个结构相同的浏览方法合并为两个通用方法
+### v2.0.0 (2026-04-26)
+- **重构**：提取 `annotation_to_yolo_lines()`、`_process_boxes()`、合并浏览方法
+- **优化**：统计面板缓存字典、十字准线渲染复用、i18n 死代码清理
+- **修复**：撤销栈深度限制 100、类别 ID 空洞、撤销/重做按钮匹配
 
 ### v1.5.0 (2026-04-26)
-- **新增标签显示控制**：检测标签字体大小可调（滑块0.1~2.0），置信度显示可开关
-- **标签显示优化**：检测结果框显示类别名称（如 `person`）而非数字ID
-- **修复窗口选择交互**：简化选择逻辑，点击目标窗口即可确认，无需拖拽
-- **修复区域选择死锁**：移除 per-pixel alpha 分层窗口，改用统一透明度，解决 `exec()` 模态事件循环死锁
-- **区域选择视觉优化**：去除窗口整体透明度设置，橡皮筋选择框清晰可见
-- **验证窗口焦点修复**：区域选择完成后自动恢复验证窗口焦点
+- 标签字体/置信度显示控制、窗口选择交互简化、区域选择死锁修复
 
 ### v1.0.0~1.4.0 (2026-02-22~2026-04-26)
 - 初始版本发布：手动标注、YOLO导出、模型辅助标注、暗色主题
