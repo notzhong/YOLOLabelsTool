@@ -53,6 +53,18 @@ EXPORT_EXT: Dict[str, str] = {
     "ncnn": "",
 }
 
+# 格式键 → 扩展名（供 ExportWorker 使用，key 为 ultralytics 内部名称）
+_FMT_KEY_EXT: Dict[str, str] = {
+    "onnx": ".onnx",
+    "engine": ".engine",
+    "openvino": ".xml",
+    "coreml": ".mlpackage",
+    "tflite": ".tflite",
+    "saved_model": "",
+    "paddle": "",
+    "ncnn": "",
+}
+
 
 class ExportWorker(QThread):
     """导出工作线程"""
@@ -76,23 +88,28 @@ class ExportWorker(QThread):
             self.progress.emit(f"开始导出为 {self.fmt} 格式...")
             dest = Path(self.output_file)
 
-            # ultralytics 默认导出到源模型所在目录，导出后移动到用户指定路径
+            # ultralytics 导出到源模型目录，导出后移动到用户指定路径
             result = model.export(format=self.fmt, imgsz=self.imgsz, device=0)
 
-            if isinstance(result, str) and Path(result).exists():
-                src = Path(result)
+            # result 可能是 str / Path / None，统一转为 Path
+            if result is not None:
+                src = Path(str(result))
             else:
-                # 回退：推导默认导出路径
-                src = Path(self.model_path).with_suffix(EXPORT_EXT.get(self.fmt, ""))
+                src = None
+
+            if src is None or not src.exists():
+                # 回退：推导默认导出路径（源模型同目录、同 stem、对应扩展名）
+                src = Path(self.model_path).with_suffix(
+                    _FMT_KEY_EXT.get(self.fmt, ""))
 
             if src.exists():
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 if src.is_dir():
                     if dest.exists():
                         shutil.rmtree(dest)
-                    shutil.move(str(src), str(dest))
                 else:
-                    shutil.move(str(src), str(dest))
+                    dest.unlink(missing_ok=True)  # 覆盖已存在的同名文件
+                shutil.move(str(src), str(dest))
                 self.progress.emit("导出完成")
                 self.finished.emit(True, f"模型已成功导出到:\n{dest}")
             else:
