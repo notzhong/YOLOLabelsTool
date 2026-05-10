@@ -3,12 +3,13 @@
 """
 import importlib
 import importlib.metadata
+import shutil
 from pathlib import Path
 from typing import Dict, List
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QGroupBox, QFormLayout, QComboBox,
+    QPushButton, QGroupBox, QFormLayout, QComboBox, QSpinBox,
     QFileDialog, QMessageBox, QTextEdit, QProgressBar
 )
 from PySide6.QtCore import Qt, QThread, Signal
@@ -58,11 +59,13 @@ class ExportWorker(QThread):
     progress = Signal(str)
     finished = Signal(bool, str)
 
-    def __init__(self, model_path: str, fmt: str, output_dir: str, imgsz: int):
+    def __init__(self, model_path: str, fmt: str, output_dir: str,
+                 output_name: str, imgsz: int):
         super().__init__()
         self.model_path = model_path
         self.fmt = fmt
         self.output_dir = output_dir
+        self.output_name = output_name
         self.imgsz = imgsz
 
     def run(self):
@@ -73,10 +76,39 @@ class ExportWorker(QThread):
             model = YOLO(self.model_path)
 
             self.progress.emit(f"开始导出为 {self.fmt} 格式...")
-            model.export(format=self.fmt, imgsz=self.imgsz, device=0)
+            result = model.export(format=self.fmt, imgsz=self.imgsz, device=0)
 
-            self.progress.emit("导出完成")
-            self.finished.emit(True, f"模型已成功导出到: {self.output_dir}")
+            # ultralytics 默认导出到源模型所在目录，需移动到用户指定位置
+            if isinstance(result, str):
+                src = Path(result)
+            else:
+                # 推导默认导出路径：与源模型同目录、同 stem、扩展名对应
+                src = Path(self.model_path).with_suffix(EXPORT_EXT.get(self.fmt, ""))
+
+            suffix = src.suffix  # e.g. ".engine", ".onnx"
+            # 对目录格式导出（saved_model, mlpackage），保留整个目录名
+            if suffix and suffix in {".onnx", ".engine", ".tflite", ".xml"}:
+                # 单文件导出
+                dest_name = self.output_name + suffix
+            else:
+                # 目录导出（saved_model 等无扩展名，用整个目录名）
+                dest_name = self.output_name + suffix if suffix else self.output_name
+
+            dest_dir = Path(self.output_dir)
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            dest = dest_dir / dest_name
+
+            if src.exists():
+                if src.is_dir():
+                    if dest.exists():
+                        shutil.rmtree(dest)
+                    shutil.move(str(src), str(dest))
+                else:
+                    shutil.move(str(src), str(dest))
+                self.progress.emit("导出完成")
+                self.finished.emit(True, f"模型已成功导出到:\n{dest}")
+            else:
+                self.finished.emit(False, f"导出完成但找不到输出文件:\n{src}")
         except Exception as e:
             import traceback
             self.progress.emit(f"导出失败: {e}")
@@ -99,7 +131,10 @@ class ExportDialog(QDialog):
         self.init_ui()
         self.setWindowTitle(tr("export_model", "导出模型"))
         self.setModal(True)
-        self.resize(550, 420)
+        self.resize(550, 460)
+
+        # 连接模型路径变更以自动检测 imgsz
+        self.model_edit.textChanged.connect(self._on_model_edit_changed)
 
         # 自动检测已加载模型的训练尺寸
         if default_model_path:
@@ -150,7 +185,10 @@ class ExportDialog(QDialog):
         browse_output_btn.clicked.connect(self.browse_output_dir)
         options_layout.addRow("", browse_output_btn)
 
-        from PySide6.QtWidgets import QSpinBox
+        self.output_name_edit = QLineEdit("model")
+        self.output_name_edit.setPlaceholderText(tr("export_name_placeholder", "导出的文件名（不含扩展名）"))
+        options_layout.addRow(tr("export_name", "文件名:"), self.output_name_edit)
+
         self.imgsz_spin = QSpinBox()
         self.imgsz_spin.setRange(32, 4096)
         self.imgsz_spin.setValue(640)
@@ -188,7 +226,6 @@ class ExportDialog(QDialog):
         layout.addLayout(btn_layout)
 
     def on_format_changed(self, fmt: str):
-        ext = EXPORT_EXT.get(fmt, "")
         if fmt == "TensorRT":
             self.format_hint.setText(tr("format_tensorrt_hint", "需要 NVIDIA CUDA 环境，导出时间较长"))
         elif fmt == "CoreML":
@@ -203,13 +240,35 @@ class ExportDialog(QDialog):
         try:
             import torch
             ckpt = torch.load(model_path, map_location="cpu", weights_only=False)
-            if ckpt is not None:
-                overrides = getattr(ckpt, "overrides", None) or ckpt.get("overrides", {})
-                if isinstance(overrides, dict):
-                    return overrides.get("imgsz")
         except Exception:
-            pass
+            return None
+
+        if ckpt is None:
+            return None
+
+        # 尝试多个可能的存储位置（兼容不同 ultralytics 版本）
+        candidates = []
+        if hasattr(ckpt, "overrides") and isinstance(ckpt.overrides, dict):
+            candidates.append(ckpt.overrides)
+        if isinstance(ckpt, dict):
+            if "overrides" in ckpt and isinstance(ckpt["overrides"], dict):
+                candidates.append(ckpt["overrides"])
+            if "train_args" in ckpt and isinstance(ckpt["train_args"], dict):
+                candidates.append(ckpt["train_args"])
+            if "cfg" in ckpt and isinstance(ckpt["cfg"], dict):
+                candidates.append(ckpt["cfg"])
+
+        for d in candidates:
+            imgsz = d.get("imgsz")
+            if imgsz is not None:
+                return int(imgsz)
+
         return None
+
+    def _on_model_edit_changed(self, path: str):
+        """模型路径文本变更时自动检测训练尺寸"""
+        if path and path.endswith(".pt") and Path(path).exists():
+            self._on_model_path_changed(path)
 
     def _on_model_path_changed(self, path: str):
         """模型路径变更时自动检测训练尺寸"""
@@ -217,6 +276,9 @@ class ExportDialog(QDialog):
             detected = self._detect_model_imgsz(path)
             if detected is not None:
                 self.imgsz_spin.setValue(int(detected))
+            # 自动填入默认文件名（源模型 stem，去掉 best/last 后缀）
+            stem = Path(path).stem
+            self.output_name_edit.setText(stem)
 
     def browse_model(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -244,13 +306,11 @@ class ExportDialog(QDialog):
         missing = []
         pkgs = FORMAT_DEPENDENCIES.get(fmt, [])
         for pkg in pkgs:
-            # 按模块名导入
             try:
                 importlib.import_module(pkg)
                 continue
             except ImportError:
                 pass
-            # 按 pip 包名检测（包名含 - 时模块导入会失败）
             try:
                 importlib.metadata.version(pkg)
             except importlib.metadata.PackageNotFoundError:
@@ -272,6 +332,11 @@ class ExportDialog(QDialog):
             return False
         if not Path(output_dir).exists():
             QMessageBox.warning(self, tr("warning", "警告"), tr("output_dir_not_exists", "导出目录不存在"))
+            return False
+
+        output_name = self.output_name_edit.text().strip()
+        if not output_name:
+            QMessageBox.warning(self, tr("warning", "警告"), tr("no_export_name", "请输入导出文件名"))
             return False
 
         return True
@@ -299,6 +364,7 @@ class ExportDialog(QDialog):
 
         model_path = self.model_edit.text().strip()
         output_dir = self.output_dir_edit.text().strip()
+        output_name = self.output_name_edit.text().strip()
         imgsz = self.imgsz_spin.value()
 
         self.export_btn.setEnabled(False)
@@ -306,7 +372,9 @@ class ExportDialog(QDialog):
         self.log_text.setVisible(True)
         self.log_text.clear()
 
-        self.worker = ExportWorker(model_path, fmt, output_dir, imgsz=imgsz)
+        # 将显示名称映射为 ultralytics 格式键（如 "TensorRT" → "engine"）
+        fmt_key = EXPORT_FORMATS.get(fmt, fmt.lower())
+        self.worker = ExportWorker(model_path, fmt_key, output_dir, output_name, imgsz)
         self.worker.progress.connect(self.on_progress)
         self.worker.finished.connect(self.on_finished)
         self.worker.start()
