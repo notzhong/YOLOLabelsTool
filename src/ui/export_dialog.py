@@ -395,19 +395,12 @@ class ExportDialog(QDialog):
         fmt = self.format_combo.currentText()
         missing = self.check_dependencies(fmt)
         if missing:
-            reply = QMessageBox.question(
-                self,
-                tr("missing_deps_title", "缺少依赖"),
-                tr("missing_deps_msg", "导出 {fmt} 需要以下依赖包，是否继续？\n\n{packages}\n\n可运行以下命令安装：\n{cmd}\n\n如已安装请忽略，导出可能仍会失败。").format(
-                    fmt=fmt,
-                    packages=", ".join(missing),
-                    cmd="pip install " + " ".join(missing)
-                ),
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No
-            )
-            if reply == QMessageBox.No:
-                return
+            msg = tr("missing_deps_msg",
+                "导出 {fmt} 需要以下依赖包：\n\n{packages}\n\n请手动安装后重试：\npip install {install_args}").format(
+                    fmt=fmt, packages=", ".join(missing),
+                    install_args=" ".join(missing))
+            QMessageBox.warning(self, tr("missing_deps_title", "缺少依赖"), msg)
+            return
 
         model_path = self.model_edit.text().strip()
         output_file = self.output_file_edit.text().strip()

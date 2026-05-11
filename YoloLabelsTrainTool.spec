@@ -77,6 +77,16 @@ hiddenimports += [
     'ultralytics.solutions',
     # 模型导出对话框（方法内动态导入，PyInstaller 可能漏掉）
     'src.ui.export_dialog',
+    # 模型导出各格式依赖（全量打包，离线可用）
+    # 打包前请确保 conda 环境中已安装对应包：
+    #   pip install onnx onnxslim onnxruntime-gpu openvino tensorflow paddlepaddle
+    'onnx',
+    'onnxslim',
+    'onnxruntime',
+    'openvino',
+    'tensorflow',
+    'paddlepaddle',
+    # coremltools 仅限 macOS，Windows 下不可用
 ]
 
 # ===============================
