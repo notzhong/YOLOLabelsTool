@@ -77,17 +77,31 @@ hiddenimports += [
     'ultralytics.solutions',
     # 模型导出对话框（方法内动态导入，PyInstaller 可能漏掉）
     'src.ui.export_dialog',
-    # 模型导出各格式依赖（全量打包，离线可用）
-    # 打包前请确保 conda 环境中已安装对应包：
-    #   pip install onnx onnxslim onnxruntime-gpu openvino tensorflow paddlepaddle
-    'onnx',
-    'onnxslim',
-    'onnxruntime',
-    'openvino',
-    'tensorflow',
-    'paddlepaddle',
-    # coremltools 仅限 macOS，Windows 下不可用
 ]
+
+# ===============================
+# 自动收集模型导出依赖（全量打包，离线可用）
+# 打包前请确保 conda 环境中已安装：pip install onnx onnxslim onnxruntime-gpu openvino
+# ===============================
+for _pkg in ['onnx', 'onnxslim', 'onnxruntime', 'openvino']:
+    try:
+        _pkg_datas, _pkg_bins, _pkg_hidden = collect_all(_pkg)
+        datas.extend(_pkg_datas)
+        binaries.extend(_pkg_bins)
+        hiddenimports.extend(_pkg_hidden)
+    except Exception:
+        pass  # 包未安装时跳过，不影响打包其他内容
+
+# 以下体量较大（tensorflow ~1GB, paddlepaddle ~500MB），按需取消注释：
+# for _pkg in ['tensorflow', 'paddlepaddle']:
+#     try:
+#         _pkg_datas, _pkg_bins, _pkg_hidden = collect_all(_pkg)
+#         datas.extend(_pkg_datas)
+#         binaries.extend(_pkg_bins)
+#         hiddenimports.extend(_pkg_hidden)
+#     except Exception:
+#         pass
+# coremltools 仅限 macOS，Windows 下不可用
 
 # ===============================
 # 排除不必要的模块，减小打包体积
