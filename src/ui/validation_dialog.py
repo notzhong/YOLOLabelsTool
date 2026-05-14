@@ -503,6 +503,7 @@ class ValidationDialog(QDialog):
             return
 
         if not self.model_manager.is_model_loaded():
+            logger.warning("开始检测被拒: 模型未加载")
             QMessageBox.warning(self, tr("warning"), tr("no_model_loaded"))
             return
 
@@ -513,14 +514,17 @@ class ValidationDialog(QDialog):
             return
 
         if not DXCAM_AVAILABLE:
+            logger.warning("dxcam 不可用，无法开始实时检测")
             QMessageBox.warning(self, tr("warning"), tr("dxcam_not_installed"))
             return
 
         if source == self.SOURCE_WINDOW and not self.current_hwnd:
+            logger.warning("开始检测被拒: 未选择窗口")
             QMessageBox.warning(self, tr("warning"), tr("window_not_selected"))
             return
 
         if source == self.SOURCE_REGION and not self.current_rect:
+            logger.warning("开始检测被拒: 未选择区域")
             QMessageBox.warning(self, tr("warning"), tr("region_not_selected"))
             return
 
@@ -551,7 +555,7 @@ class ValidationDialog(QDialog):
             self.camera = None
 
     def _start(self):
-        # Ensure old camera is released before creating new one
+        logger.info(f"实时检测开始, 来源={self._selected_source()}")
         self._release_camera()
 
         if DXCAM_AVAILABLE:
@@ -563,11 +567,11 @@ class ValidationDialog(QDialog):
         self.status_label.setText(tr("detecting_status"))
 
     def _stop(self):
+        logger.info("实时检测停止")
         self.is_running = False
         self.btn_toggle.setText(tr("start_detect"))
         self.timer.stop()
         self.status_label.setText(tr("ready"))
-        # Release camera resources when not detecting
         self._release_camera()
 
     def _on_tick(self):

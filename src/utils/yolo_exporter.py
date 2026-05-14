@@ -89,14 +89,16 @@ class YOLOExporter:
         """
         # 验证分割比例
         if abs(sum(split_ratios) - 1.0) > 0.01:
+            self.logger.error(f"导出失败: 分割比例和为 {sum(split_ratios)}，应为 1.0")
             raise ValueError(f"分割比例之和应为1.0，当前为{sum(split_ratios)}")
-        
+
         # 创建输出目录结构
         self._create_output_structure(output_dir)
-        
+
         # 获取所有图片路径
         image_paths = image_manager.get_all_image_paths()
         if not image_paths:
+            self.logger.error("导出失败: 没有图片可导出")
             raise ValueError("没有图片可导出")
         
         # 划分数据集
@@ -387,26 +389,30 @@ class YOLOExporter:
             for dir_name in required_dirs:
                 dir_path = output_path / dir_name
                 if not dir_path.exists():
+                    self.logger.error(f"导出验证: 目录不存在 {dir_name}")
                     validation_result["errors"].append(f"目录不存在: {dir_name}")
                     validation_result["valid"] = False
-            
+
             # 检查data.yaml文件
             yaml_file = output_path / yaml_filename
             if not yaml_file.exists():
+                self.logger.error("导出验证: data.yaml 文件不存在")
                 validation_result["errors"].append("data.yaml文件不存在")
                 validation_result["valid"] = False
             else:
                 try:
                     with open(yaml_file, 'r', encoding='utf-8') as f:
                         yaml_data = yaml.safe_load(f)
-                    
+
                     required_keys = ["path", "train", "val", "test", "nc", "names"]
                     for key in required_keys:
                         if key not in yaml_data:
+                            self.logger.error(f"导出验证: data.yaml 缺少字段 {key}")
                             validation_result["errors"].append(f"data.yaml缺少必需字段: {key}")
                             validation_result["valid"] = False
-                            
+
                 except Exception as e:
+                    self.logger.exception(f"导出验证: 解析 data.yaml 失败")
                     validation_result["errors"].append(f"解析data.yaml失败: {e}")
                     validation_result["valid"] = False
             
@@ -433,13 +439,15 @@ class YOLOExporter:
                 }
                 
                 if image_count != label_count:
+                    self.logger.warning(f"导出验证: {subset} 图片({image_count})与标注({label_count})不匹配")
                     validation_result["warnings"].append(
                         f"{subset}子集图片数({image_count})与标注数({label_count})不匹配"
                     )
-            
+
             validation_result["statistics"] = stats
-            
+
         except Exception as e:
+            self.logger.exception(f"导出验证过程中发生错误: {e}")
             validation_result["errors"].append(f"验证过程中发生错误: {e}")
             validation_result["valid"] = False
         

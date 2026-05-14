@@ -13,6 +13,9 @@ from PySide6.QtGui import QFont, QTextCursor
 
 from yolo_tool import YOLOTrainer
 from src.utils.i18n import tr
+from src.utils.logger import get_logger_simple
+
+logger = get_logger_simple(__name__)
 
 
 class TrainProgressDialog(QDialog):
@@ -126,12 +129,14 @@ class TrainProgressDialog(QDialog):
             self.show()
             return True
         else:
+            logger.error("无法开始训练")
             QMessageBox.critical(self, tr("error"), tr("unable_to_start_training"))
             return False
-    
+
     @Slot()
     def on_training_started(self):
         """训练开始事件"""
+        logger.info("训练已开始")
         self.start_time = datetime.now()
         self.status_label.setText(tr("training_in_progress_status"))
         self.status_label.setStyleSheet("font-weight: bold; font-size: 14px; color: #4CAF50;")
@@ -173,15 +178,15 @@ class TrainProgressDialog(QDialog):
     @Slot(bool, str)
     def on_training_finished(self, success: bool, message: str):
         """训练完成事件"""
-        # 停止计时器
         self.timer.stop()
-        
-        # 更新状态
+
         if success:
+            logger.info(f"训练成功完成: {message}")
             self.status_label.setText(tr("training_completed_status"))
             self.status_label.setStyleSheet("font-weight: bold; font-size: 14px; color: #4CAF50;")
             self.progress_bar.setValue(100)
         else:
+            logger.error(f"训练失败: {message}")
             self.status_label.setText(tr("training_failed_status_label"))
             self.status_label.setStyleSheet("font-weight: bold; font-size: 14px; color: #f44336;")
         
@@ -200,6 +205,7 @@ class TrainProgressDialog(QDialog):
     @Slot()
     def on_training_stopped(self):
         """训练停止事件"""
+        logger.info("训练被用户停止")
         self.status_label.setText(tr("training_stopped_status"))
         self.status_label.setStyleSheet("font-weight: bold; font-size: 14px; color: #ff9800;")
         
@@ -245,6 +251,7 @@ class TrainProgressDialog(QDialog):
             self.done(QDialog.Rejected)
             
         except Exception as e:
+            logger.exception(f"重新配置训练失败: {e}")
             self.log_message(tr("reconfigure_failed_prefix") + str(e))
             QMessageBox.critical(self, tr("error"), tr("reconfigure_failed_prefix") + str(e))
             
@@ -262,6 +269,7 @@ class TrainProgressDialog(QDialog):
         )
         
         if reply == QMessageBox.Yes:
+            logger.info("用户请求停止训练")
             self.trainer.stop_training()
             self.btn_stop.setEnabled(False)
             self.log_message(tr("stopping_training"))

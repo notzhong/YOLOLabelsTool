@@ -111,8 +111,10 @@ class ExportWorker(QThread):
                 self.finished.emit(False, f"导出完成但找不到输出文件:\n{src}")
         except Exception as e:
             import traceback
+            tb = traceback.format_exc()
+            logger.exception(f"导出工作线程失败: {e}")
             self.progress.emit(f"导出失败: {e}")
-            self.finished.emit(False, f"导出失败:\n{traceback.format_exc()}")
+            self.finished.emit(False, f"导出失败:\n{tb}")
 
     def _derive_src(self, model_path: Path) -> Path:
         """推导导出文件/目录的默认路径"""
@@ -288,6 +290,7 @@ class ExportDialog(QDialog):
             import torch
             ckpt = torch.load(model_path, map_location="cpu", weights_only=False)
         except Exception:
+            logger.debug(f"无法从 checkpoint 读取 imgsz: {model_path}", exc_info=True)
             return None
 
         if ckpt is None:
@@ -375,14 +378,17 @@ class ExportDialog(QDialog):
     def validate(self) -> bool:
         model_path = self.model_edit.text().strip()
         if not model_path:
+            logger.warning("导出验证失败: 未选择模型文件")
             QMessageBox.warning(self, tr("warning", "警告"), tr("no_model_selected", "请选择模型文件"))
             return False
         if not Path(model_path).exists():
+            logger.warning(f"导出验证失败: 模型文件不存在 {model_path}")
             QMessageBox.warning(self, tr("warning", "警告"), tr("model_file_not_exists", "模型文件不存在"))
             return False
 
         output_file = self.output_file_edit.text().strip()
         if not output_file:
+            logger.warning("导出验证失败: 未选择输出文件")
             QMessageBox.warning(self, tr("warning", "警告"), tr("no_output_file", "请选择输出文件路径"))
             return False
 
@@ -395,6 +401,7 @@ class ExportDialog(QDialog):
         fmt = self.format_combo.currentText()
         missing = self.check_dependencies(fmt)
         if missing:
+            logger.warning(f"导出 {fmt} 缺少依赖: {', '.join(missing)}")
             msg = tr("missing_deps_msg",
                 "导出 {fmt} 需要以下依赖包：\n\n{packages}\n\n请手动安装后重试：\npip install {install_args}").format(
                     fmt=fmt, packages=", ".join(missing),
@@ -405,6 +412,8 @@ class ExportDialog(QDialog):
         model_path = self.model_edit.text().strip()
         output_file = self.output_file_edit.text().strip()
         imgsz = self.imgsz_spin.value()
+
+        logger.info(f"开始导出: model={model_path}, format={fmt}, output={output_file}, imgsz={imgsz}")
 
         self.export_btn.setEnabled(False)
         self.progress_bar.setVisible(True)
@@ -418,6 +427,7 @@ class ExportDialog(QDialog):
         self.worker.start()
 
     def on_progress(self, msg: str):
+        logger.info(msg)
         self.log_text.append(msg)
 
     def on_finished(self, success: bool, message: str):
@@ -425,7 +435,9 @@ class ExportDialog(QDialog):
         self.export_btn.setEnabled(True)
 
         if success:
+            logger.info(f"导出成功: {message}")
             QMessageBox.information(self, tr("success", "成功"), message)
             self.accept()
         else:
+            logger.error(f"导出失败: {message}")
             QMessageBox.critical(self, tr("error", "错误"), message)

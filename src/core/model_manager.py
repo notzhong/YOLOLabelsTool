@@ -193,10 +193,9 @@ class ModelManager:
         """卸载模型并释放资源"""
         if self.model is not None:
             try:
-                # 释放模型
                 del self.model
-            except Exception:
-                pass
+            except Exception as e:
+                self.logger.warning(f"卸载模型时出错: {e}")
             self.model = None
         self.model_path = None
         self.model_loaded = False

@@ -17,6 +17,10 @@ from ultralytics.cfg import DEFAULT_CFG_DICT
 
 from PySide6.QtCore import QObject, Signal
 
+from src.utils.logger import get_logger_simple
+
+_logger = get_logger_simple(__name__)
+
 
 class ProgressCallback:
     """YOLO训练进度回调，用于实时更新训练进度"""
@@ -91,21 +95,21 @@ class ProgressCallback:
             # 如果有损失数据，发送更新（ultralytics epoch 是 0-indexed，显示时 +1）
             if metrics:
                 self.trainer.progress_updated.emit(epoch + 1, metrics)
-        except Exception as e:
+        except Exception:
             # 忽略批次更新错误，不影响主流程
             pass
 
 
 class YOLOTrainer(QObject):
     """YOLO模型训练器，支持异步训练和进度跟踪"""
-    
+
     # 信号定义
     progress_updated = Signal(int, dict)      # epoch, metrics
     log_message = Signal(str)                 # 日志消息
     training_started = Signal()               # 训练开始
     training_finished = Signal(bool, str)     # 成功, 消息
     training_stopped = Signal()               # 训练被停止
-    
+
     def __init__(self):
         super().__init__()
         self.model: Optional[YOLO] = None
@@ -113,17 +117,25 @@ class YOLOTrainer(QObject):
         self.should_stop: bool = False
         self.config: Dict[str, Any] = {}
         self.train_thread: Optional[threading.Thread] = None
-        self._callbacks_to_add: list = []  # 存储需要通过train_args传递的回调
+        self._callbacks_to_add: list = []
+
+        # log_message 信号一旦触发就自动写日志文件
+        self.log_message.connect(lambda msg: _logger.info(msg))
+
+    def _log(self, msg: str, level: str = "info"):
+        """同时发送 UI 信号和写入日志文件（带级别控制）"""
+        self.log_message.emit(msg)
+        getattr(_logger, level)(msg)
         
     def load_config(self, config_path: Union[str, Path]) -> bool:
         """从JSON文件加载训练配置"""
         try:
             with open(config_path, 'r', encoding='utf-8') as f:
                 self.config = json.load(f)
-            self.log_message.emit(f"已加载训练配置: {config_path}")
+            self._log(f"已加载训练配置: {config_path}")
             return True
         except Exception as e:
-            self.log_message.emit(f"加载配置失败: {e}")
+            self._log(f"加载配置失败: {e}")
             return False
     
     def save_config(self, config_path: Union[str, Path]) -> bool:
@@ -134,10 +146,10 @@ class YOLOTrainer(QObject):
             
             with open(config_path, 'w', encoding='utf-8') as f:
                 json.dump(self.config, f, indent=2, ensure_ascii=False)
-            self.log_message.emit(f"已保存训练配置: {config_path}")
+            self._log(f"已保存训练配置: {config_path}")
             return True
         except Exception as e:
-            self.log_message.emit(f"保存配置失败: {e}")
+            self._log(f"保存配置失败: {e}")
             return False
     
     def setup(self, config: Dict[str, Any]) -> bool:
@@ -160,30 +172,30 @@ class YOLOTrainer(QObject):
         # 检查必要的参数
         if not is_resume and not is_incremental:
             if 'model_path' not in config:
-                self.log_message.emit(f"缺少必要参数: model_path")
+                self._log(f"缺少必要参数: model_path")
                 return False
             if not Path(config['model_path']).exists():
-                self.log_message.emit(f"模型文件不存在: {config['model_path']}")
+                self._log(f"模型文件不存在: {config['model_path']}")
                 return False
 
         if 'data_yaml' not in config:
-            self.log_message.emit(f"缺少必要参数: data_yaml")
+            self._log(f"缺少必要参数: data_yaml")
             return False
 
         # 检查文件是否存在
         if not Path(model_file).exists():
-            self.log_message.emit(f"模型文件不存在: {model_file}")
+            self._log(f"模型文件不存在: {model_file}")
             return False
 
         if not Path(config['data_yaml']).exists():
-            self.log_message.emit(f"数据集配置文件不存在: {config['data_yaml']}")
+            self._log(f"数据集配置文件不存在: {config['data_yaml']}")
             return False
 
         # 设置默认输出目录
         if 'output_dir' not in self.config:
             self.config['output_dir'] = str(Path.cwd() / "runs" / "train")
 
-        self.log_message.emit("训练参数设置完成")
+        self._log("训练参数设置完成")
         return True
     
     def _training_worker(self):
@@ -222,7 +234,7 @@ class YOLOTrainer(QObject):
             workers = self.config.get('workers', 0)
             if is_windows and workers > 2:
                 safe_workers = min(2, self.config.get('batch', 4))
-                self.log_message.emit(
+                self._log(
                     f"⚠ Windows 下 workers={workers} 可能引发 I/O 错误, 已自动降至 {safe_workers}"
                 )
                 self.config['workers'] = safe_workers
@@ -241,7 +253,7 @@ class YOLOTrainer(QObject):
             else:
                 model_path = self.config.get('model_path')
 
-            self.log_message.emit(f"加载模型: {model_path}")
+            self._log(f"加载模型: {model_path}")
             self.model = YOLO(model_path)
 
             # 清理模型中可能携带的旧版/非兼容参数（例如某些自定义checkpoint参数）
@@ -249,7 +261,7 @@ class YOLOTrainer(QObject):
             self._sanitize_model_overrides(aggressive=is_incremental)
 
             if is_incremental:
-                self.log_message.emit("增量训练模式：已加载训练过的模型权重，将使用全新优化器在新数据集上训练")
+                self._log("增量训练模式：已加载训练过的模型权重，将使用全新优化器在新数据集上训练")
 
             # 添加进度回调 - 使用健壮的注册方式
             progress_callback = ProgressCallback(self)
@@ -317,14 +329,14 @@ class YOLOTrainer(QObject):
             # 仅保留当前ultralytics版本支持的参数，避免版本差异导致训练失败
             train_args = self._filter_supported_train_args(train_args)
             
-            self.log_message.emit(f"开始训练，共 {train_args['epochs']} 个epochs")
-            self.log_message.emit(f"输出目录: {train_args['project']}")
+            self._log(f"开始训练，共 {train_args['epochs']} 个epochs")
+            self._log(f"输出目录: {train_args['project']}")
             
             # 执行训练
             results = self.model.train(**train_args)
 
             if self.should_stop:
-                self.log_message.emit("训练被用户停止")
+                self._log("训练被用户停止")
                 self.training_stopped.emit()
 
                 # 清理内存
@@ -339,7 +351,7 @@ class YOLOTrainer(QObject):
             else:
                 message = "训练完成"
 
-            self.log_message.emit("训练完成")
+            self._log("训练完成")
             success = True
 
             # 清理内存
@@ -350,7 +362,7 @@ class YOLOTrainer(QObject):
             
         except Exception as e:
             error_msg = f"训练过程中发生错误: {str(e)}\n{traceback.format_exc()}"
-            self.log_message.emit(error_msg)
+            self._log(error_msg)
             self.is_training = False
             
             # 清理内存
@@ -394,11 +406,11 @@ class YOLOTrainer(QObject):
                 overrides.pop(k, None)
 
             if removed_keys or (aggressive and aggressive_remove):
-                self.log_message.emit(
+                self._log(
                     f"已清理模型旧训练参数，避免与新训练冲突"
                 )
         except Exception as e:
-            self.log_message.emit(f"清理模型overrides失败（忽略）: {e}")
+            self._log(f"清理模型overrides失败（忽略）: {e}")
 
     def _filter_supported_train_args(self, train_args: Dict[str, Any]) -> Dict[str, Any]:
         """过滤并返回当前ultralytics版本支持的训练参数。"""
@@ -416,7 +428,7 @@ class YOLOTrainer(QObject):
                 removed_keys.append(key)
 
         if removed_keys:
-            self.log_message.emit(
+            self._log(
                 f"检测到当前版本不支持的训练参数，已忽略: {', '.join(sorted(removed_keys))}"
             )
 
@@ -425,38 +437,38 @@ class YOLOTrainer(QObject):
     def start_training(self):
         """开始训练（异步）"""
         if self.is_training:
-            self.log_message.emit("训练已在运行中")
+            self._log("训练已在运行中")
             return False
         
         if not self.config:
-            self.log_message.emit("请先设置训练参数")
+            self._log("请先设置训练参数")
             return False
         
         # 创建并启动训练线程
         self.train_thread = threading.Thread(target=self._training_worker, daemon=True)
         self.train_thread.start()
         
-        self.log_message.emit("训练线程已启动")
+        self._log("训练线程已启动")
         return True
     
     def stop_training(self):
         """停止训练"""
         if not self.is_training:
-            self.log_message.emit("没有正在运行的训练")
+            self._log("没有正在运行的训练")
             return False
         
         self.should_stop = True
-        self.log_message.emit("正在停止训练...")
+        self._log("正在停止训练...")
         return True
     
     def resume_training(self, checkpoint_path: Union[str, Path]) -> bool:
         """从检查点恢复训练"""
         if not Path(checkpoint_path).exists():
-            self.log_message.emit(f"检查点文件不存在: {checkpoint_path}")
+            self._log(f"检查点文件不存在: {checkpoint_path}")
             return False
         
         self.config['resume'] = checkpoint_path
-        self.log_message.emit(f"将恢复训练从: {checkpoint_path}")
+        self._log(f"将恢复训练从: {checkpoint_path}")
         return True
     
     def get_default_config(self) -> Dict[str, Any]:
@@ -522,7 +534,7 @@ class YOLOTrainer(QObject):
         try:
             # 检查add_callback方法是否存在
             if not hasattr(self.model, 'add_callback'):
-                self.log_message.emit("⚠ 模型没有add_callback方法，将通过训练参数传递回调")
+                self._log("⚠ 模型没有add_callback方法，将通过训练参数传递回调")
                 return
             
             # 方法1：尝试两个参数的版本（事件名称, 回调函数）
@@ -532,7 +544,7 @@ class YOLOTrainer(QObject):
                     lambda trainer: callback_instance.on_train_epoch_end(trainer))
                 self.model.add_callback('on_train_batch_end', 
                     lambda trainer: callback_instance.on_train_batch_end(trainer))
-                self.log_message.emit("✓ 使用 add_callback(event, func) 注册回调")
+                self._log("✓ 使用 add_callback(event, func) 注册回调")
                 return
             except TypeError as e:
                 # 如果两个参数版本失败，尝试一个参数的版本（回调对象）
@@ -540,26 +552,26 @@ class YOLOTrainer(QObject):
                     # 错误提示缺少一个参数，说明可能是单参数版本
                     try:
                         self.model.add_callback(callback_instance)
-                        self.log_message.emit("✓ 使用 add_callback(callback_instance) 注册回调")
+                        self._log("✓ 使用 add_callback(callback_instance) 注册回调")
                         return
                     except Exception as inner_e:
-                        self.log_message.emit(f"单参数版本也失败: {inner_e}")
+                        self._log(f"单参数版本也失败: {inner_e}")
                 else:
-                    self.log_message.emit(f"两参数版本失败: {e}")
+                    self._log(f"两参数版本失败: {e}")
             
             # 方法2：通过callbacks参数（训练时传递）
             if hasattr(self.model, 'callbacks'):
                 # 尝试添加到callbacks列表
                 if isinstance(self.model.callbacks, list):
                     self.model.callbacks.append(callback_instance)
-                    self.log_message.emit("✓ 添加到 model.callbacks 列表")
+                    self._log("✓ 添加到 model.callbacks 列表")
                     return
             
             # 方法3：通过训练参数传递（在train_args中添加callbacks）
-            self.log_message.emit("⚠ 无法直接注册回调，将通过训练参数传递")
+            self._log("⚠ 无法直接注册回调，将通过训练参数传递")
             
         except Exception as e:
-            self.log_message.emit(f"注册回调失败（不影响训练）: {e}")
+            self._log(f"注册回调失败（不影响训练）: {e}")
     
     def _cleanup_resources(self):
         """清理训练资源，释放内存"""
@@ -592,16 +604,16 @@ class YOLOTrainer(QObject):
                 import torch
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
-                    self.log_message.emit("CUDA缓存已清理")
+                    self._log("CUDA缓存已清理")
             except ImportError:
                 pass
             
             # 强制垃圾回收
             gc.collect()
             
-            self.log_message.emit("资源清理完成")
+            self._log("资源清理完成")
         except Exception as e:
-            self.log_message.emit(f"清理资源时出错: {e}")
+            self._log(f"清理资源时出错: {e}")
     
     def cleanup(self):
         """清理所有资源，释放内存"""
@@ -615,7 +627,7 @@ class YOLOTrainer(QObject):
             # 线程是daemon线程，会随主线程结束
             pass
             
-        self.log_message.emit("训练器资源完全清理完成")
+        self._log("训练器资源完全清理完成")
 
 
 # 保留原函数以保持向后兼容性

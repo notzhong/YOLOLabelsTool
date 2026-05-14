@@ -629,6 +629,7 @@ class TrainDialog(QDialog):
                 
                 QMessageBox.information(self, tr("success"), tr("config_saved_successfully") + f" {config_path}")
             except Exception as e:
+                logger.exception(f"保存配置失败: {e}")
                 QMessageBox.critical(self, tr("error"), tr("save_config_failed_error") + f" {str(e)}")
     
     def load_config(self):
@@ -651,6 +652,7 @@ class TrainDialog(QDialog):
                 
                 QMessageBox.information(self, tr("success"), tr("config_loaded_successfully") + f" {config_path}")
             except Exception as e:
+                logger.exception(f"加载配置失败: {e}")
                 QMessageBox.critical(self, tr("error"), tr("load_config_failed_error") + f" {str(e)}")
     
     def collect_config_from_ui(self) -> Dict[str, Any]:
@@ -838,21 +840,25 @@ class TrainDialog(QDialog):
         # 恢复训练 / 增量训练时不需要预训练 model_path
         if not is_resume and not is_incremental:
             if not config['model_path']:
+                logger.warning("训练验证失败: 未指定模型路径")
                 QMessageBox.warning(self, tr("warning"), tr("validation_failed_model_file"))
                 self.model_path_edit.setFocus()
                 return False
 
             if not Path(config['model_path']).exists():
+                logger.warning(f"训练验证失败: 模型文件不存在 {config['model_path']}")
                 QMessageBox.warning(self, tr("warning"), tr("model_file_not_exists") + f" {config['model_path']}")
                 self.model_path_edit.setFocus()
                 return False
 
         if not config['data_yaml']:
+            logger.warning("训练验证失败: 未指定 data.yaml")
             QMessageBox.warning(self, tr("warning"), tr("validation_failed_data_yaml"))
             self.data_yaml_edit.setFocus()
             return False
 
         if not Path(config['data_yaml']).exists():
+            logger.warning(f"训练验证失败: data.yaml 不存在 {config['data_yaml']}")
             QMessageBox.warning(self, tr("warning"), tr("data_yaml_not_exists") + f" {config['data_yaml']}")
             self.data_yaml_edit.setFocus()
             return False
@@ -860,6 +866,7 @@ class TrainDialog(QDialog):
         # 如果启用了恢复训练，检查检查点文件
         if config['resume'] and isinstance(config['resume'], str):
             if not Path(config['resume']).exists():
+                logger.warning(f"训练验证失败: 恢复检查点不存在 {config['resume']}")
                 QMessageBox.warning(self, tr("warning"), tr("checkpoint_file_not_exists") + f" {config['resume']}")
                 self.resume_path_edit.setFocus()
                 return False
@@ -867,6 +874,7 @@ class TrainDialog(QDialog):
         # 如果启用了增量训练，检查权重文件
         if is_incremental:
             if not Path(config['incremental']).exists():
+                logger.warning(f"训练验证失败: 增量训练权重文件不存在 {config['incremental']}")
                 QMessageBox.warning(self, tr("warning"), tr("incremental_file_not_exists", "增量训练权重文件不存在") + f" {config['incremental']}")
                 self.incremental_path_edit.setFocus()
                 return False
@@ -1098,6 +1106,7 @@ class TrainDialog(QDialog):
         
         # 设置训练器
         if not self.trainer.setup(config):
+            logger.error(f"训练器 setup 失败, config keys: {list(config.keys())}")
             QMessageBox.critical(self, tr("error"), tr("train_params_setup_failed"))
             return
         
@@ -1115,8 +1124,10 @@ class TrainDialog(QDialog):
         def on_training_finished(success: bool, message: str):
             self.btn_start.setEnabled(True)
             if success:
+                logger.info(f"训练完成: {message}")
                 QMessageBox.information(self, tr("training_completed"), message)
             else:
+                logger.error(f"训练失败: {message}")
                 QMessageBox.critical(self, tr("training_failed"), message)
 
         self.trainer.training_finished.connect(on_training_finished)
