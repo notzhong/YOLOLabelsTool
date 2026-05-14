@@ -31,6 +31,11 @@ FORMAT_DEPENDENCIES: Dict[str, List[str]] = {
     "ncnn": [],
 }
 
+# pip 包名 → 可导入模块名（包名含 '-' 无法直接 import，PyInstaller 打包后 metadata 可能失效）
+_PKG_IMPORT_NAME: Dict[str, str] = {
+    "onnxruntime-gpu": "onnxruntime",
+}
+
 EXPORT_FORMATS: Dict[str, str] = {
     "ONNX": "onnx",
     "TensorRT": "engine",
@@ -360,18 +365,38 @@ class ExportDialog(QDialog):
             ExportDialog._last_browse_path = str(Path(path).parent)
 
     def check_dependencies(self, fmt: str) -> List[str]:
-        """检查目标格式所需的依赖包，返回缺失的包名列表。"""
+        """检查目标格式所需的依赖包，返回缺失的包名列表。
+
+        三重检测：1) import 模块名  2) pip 包名 metadata
+        3) 映射表 fallback（如 onnxruntime-gpu → import onnxruntime）
+        """
         missing = []
         pkgs = FORMAT_DEPENDENCIES.get(fmt, [])
         for pkg in pkgs:
+            found = False
+            # 1) 按模块名导入
             try:
                 importlib.import_module(pkg)
-                continue
+                found = True
             except ImportError:
                 pass
-            try:
-                importlib.metadata.version(pkg)
-            except importlib.metadata.PackageNotFoundError:
+            # 2) 按 pip 包名检测
+            if not found:
+                try:
+                    importlib.metadata.version(pkg)
+                    found = True
+                except importlib.metadata.PackageNotFoundError:
+                    pass
+            # 3) fallback 映射（用于 onnxruntime-gpu → onnxruntime 等）
+            if not found:
+                fallback = _PKG_IMPORT_NAME.get(pkg)
+                if fallback:
+                    try:
+                        importlib.import_module(fallback)
+                        found = True
+                    except ImportError:
+                        pass
+            if not found:
                 missing.append(pkg)
         return missing
 
