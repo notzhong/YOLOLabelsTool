@@ -389,16 +389,23 @@ class YOLOTrainer(QObject):
             removed_keys = [k for k in list(overrides.keys()) if k not in valid_keys]
 
             if aggressive:
-                # 增量训练时必须清除旧训练的参数，让 train() 使用新传入的值
-                aggressive_remove = {'data', 'project', 'name', 'nc', 'classes', 'batch',
-                                     'epochs', 'imgsz', 'device', 'workers', 'cache',
-                                     'optimizer', 'lr0', 'lrf', 'cos_lr', 'patience',
-                                     'close_mosaic', 'rect', 'augment', 'amp', 'plots',
-                                     'verbose', 'mixup', 'degrees', 'shear', 'perspective',
-                                     'flipud', 'fliplr', 'mosaic', 'hsv_h', 'hsv_s', 'hsv_v',
-                                     'weight_decay', 'momentum', 'warmup_epochs',
-                                     'warmup_momentum', 'warmup_bias_lr', 'box', 'cls', 'dfl',
-                                     'erasing', 'dropout', 'seed', 'copy_paste', 'resume'}
+                # 增量训练时只清理路径/IO/训练超参，保留模型结构参数
+                #   nc / classes / imgsz 决定模型结构，删除会导致分类头重建、权重丢失
+                aggressive_remove = {
+                    # 路径类（必须清理，指向旧训练目录）
+                    'data', 'project', 'name', 'resume',
+                    # IO / 设备类
+                    'device', 'workers', 'cache', 'plots', 'verbose', 'amp',
+                    # 训练超参（将被 train_args 覆盖）
+                    'batch', 'epochs', 'close_mosaic', 'patience', 'rect',
+                    'optimizer', 'lr0', 'lrf', 'cos_lr', 'momentum', 'weight_decay',
+                    'warmup_epochs', 'warmup_momentum', 'warmup_bias_lr',
+                    'box', 'cls', 'dfl', 'erasing', 'dropout', 'seed',
+                    # 数据增强
+                    'augment', 'mixup', 'degrees', 'shear', 'perspective',
+                    'flipud', 'fliplr', 'mosaic', 'copy_paste',
+                    'hsv_h', 'hsv_s', 'hsv_v',
+                }
                 for k in aggressive_remove:
                     overrides.pop(k, None)
 
