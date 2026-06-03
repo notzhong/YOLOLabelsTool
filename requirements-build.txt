@@ -8,6 +8,14 @@ ultralytics>=8.0.0
 pyyaml>=6.0
 dxcam>=0.3.0
 
+# Model export dependencies (bundled into package)
+onnx>=1.12.0
+onnxslim>=0.1.71
+onnxruntime-gpu  # GPU version; use onnxruntime for CPU
+openvino>=2024.0.0
+# tensorflow  # TFLite/SavedModel export (~1GB, uncomment if needed)
+# paddlepaddle  # PaddlePaddle export (~500MB, uncomment if needed)
+
 # Packaging tools
 pyinstaller>=6.0.0
 # UPX: https://upx.github.io/
