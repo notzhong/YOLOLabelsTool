@@ -447,6 +447,14 @@ class ExportDialog(QDialog):
 
         fmt_key = EXPORT_FORMATS.get(fmt, fmt.lower())
         self.worker = ExportWorker(model_path, fmt_key, output_file, imgsz)
+        try:
+            self.worker.progress.disconnect()
+        except Exception:
+            pass
+        try:
+            self.worker.finished.disconnect()
+        except Exception:
+            pass
         self.worker.progress.connect(self.on_progress)
         self.worker.finished.connect(self.on_finished)
         self.worker.start()

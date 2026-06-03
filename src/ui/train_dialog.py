@@ -275,7 +275,7 @@ class TrainDialog(QDialog):
                         try:
                             gpu_name = torch.cuda.get_device_name(i)
                             self.device_combo.addItem(f"{i} ({gpu_name})")
-                        except:
+                        except Exception:
                             self.device_combo.addItem(f"{i} (GPU {i})")
                     # CPU选项
                     self.device_combo.addItem("-1 (CPU)")
