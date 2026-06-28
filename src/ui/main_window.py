@@ -1349,7 +1349,7 @@ class MainWindow(QMainWindow):
         self.update_status(tr("annotations_saved").replace("{count}", str(len(annotations))))
     
     def delete_selected_annotation(self):
-        """删除选中标注（仅删除当前选中的标注框）"""
+        """删除选中标注（通过 annotation 对象定位索引，避免场景 item 顺序漂移导致误删）"""
         if not self.current_image_path:
             QMessageBox.warning(self, tr("warning"), tr("no_image_loaded"))
             return
@@ -1359,7 +1359,13 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, tr("warning"), tr("no_annotation_selected"))
             return
 
-        annotation_index = self.canvas.get_selected_annotation_index()
+        # 通过 annotation 对象在列表中查找索引，而非依赖 scene 的 annotation_index
+        annotations = self.annotation_manager.get_annotations(self.current_image_path)
+        annotation_index = -1
+        for i, ann in enumerate(annotations):
+            if ann is sel_annotation:
+                annotation_index = i
+                break
 
         if annotation_index >= 0:
             from src.core.annotation import DeleteAnnotationCommand
@@ -1567,14 +1573,22 @@ class MainWindow(QMainWindow):
         if not self.current_image_path:
             return
 
-        if index < 0:
+        # 通过 annotation 对象在列表中定位索引
+        annotations = self.annotation_manager.get_annotations(self.current_image_path)
+        annotation_index = -1
+        for i, ann in enumerate(annotations):
+            if ann is annotation:
+                annotation_index = i
+                break
+
+        if annotation_index < 0:
             return
 
         from src.core.annotation import DeleteAnnotationCommand
         command = DeleteAnnotationCommand(
             self.annotation_manager,
             self.current_image_path,
-            index
+            annotation_index
         )
         self.annotation_manager.execute_command(command)
 
