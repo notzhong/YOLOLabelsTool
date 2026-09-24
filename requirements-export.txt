@@ -1,0 +1,17 @@
+# 模型导出依赖（可选，约 540MB；不导出模型时无需安装）
+# 安装: pip install -r requirements-export.txt   或   pip install -e ".[export]"
+# 版本区间与 src/utils/export_deps.py 保持一致（与 ultralytics check_requirements 对齐），
+# 过低的版本会在导出前被检测为"未满足"并提示安装。
+#
+# 注意：onnxruntime 与 onnxruntime-gpu 是互斥轮子（共用 onnxruntime 模块目录），
+# 默认安装 CPU 版；需要 CUDA 加速请二选一改装 GPU 版：
+#   pip uninstall -y onnxruntime && pip install onnxruntime-gpu
+onnx>=1.12.0,<2.0.0
+onnxslim>=0.1.82
+onnxruntime>=1.16
+openvino>=2024.0.0
+
+# 以下体量更大，按需取消注释：
+# tensorflow  # TFLite/SavedModel 导出（体量 ~1GB，另含 onnx2tf 等工具链）
+# paddlepaddle  # PaddlePaddle 导出（体量 ~500MB）
+# tensorrt-cu12  # TensorRT 引擎导出（需 NVIDIA 驱动/CUDA，包名随 CUDA 版本而定）

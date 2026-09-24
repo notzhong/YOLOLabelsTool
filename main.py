@@ -4,6 +4,7 @@
 YOLO 标注工具 - 主程序入口
 """
 
+import os
 import sys
 import traceback
 import multiprocessing
@@ -12,6 +13,11 @@ from pathlib import Path
 
 def setup_environment():
     """设置环境，添加src目录到Python路径"""
+    # 关闭 ultralytics 的运行时自动 pip 安装（AutoUpdate）：导出依赖改由
+    # 导出对话框"询问后自动安装"统一管理，避免静默下载数百 MB 或污染环境。
+    # 需要恢复旧行为可设置 YOLO_AUTOINSTALL=True。
+    os.environ.setdefault("YOLO_AUTOINSTALL", "False")
+
     current_dir = Path(__file__).parent
     src_dir = current_dir / "src"
     if src_dir.exists():

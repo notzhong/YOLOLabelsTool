@@ -12,10 +12,13 @@ torch>=2.0.0
 pyyaml>=6.0
 dxcam>=0.3.0; sys_platform == "win32"  # Windows-only screen capture
 
-# Model export dependencies (bundled into package)
-onnx>=1.12.0
-onnxslim>=0.1.71
-onnxruntime-gpu  # GPU version; use onnxruntime for CPU
+# Model export dependencies (bundled into package — keep the full set for offline export)
+# NOTE: onnxruntime and onnxruntime-gpu are MUTUALLY EXCLUSIVE wheels (both provide the
+# `onnxruntime` module directory); install the variant matching this build machine.
+# Version bounds mirror src/utils/export_deps.py so bundled bundles pass the pre-export check.
+onnx>=1.12.0,<2.0.0
+onnxslim>=0.1.82
+onnxruntime-gpu  # GPU variant; CPU-only build machines: pip install onnxruntime
 openvino>=2024.0.0
 # tensorflow  # TFLite/SavedModel export (~1GB, uncomment if needed)
 # paddlepaddle  # PaddlePaddle export (~500MB, uncomment if needed)

@@ -9,10 +9,8 @@ torch>=2.0.0
 pyyaml>=6.0
 dxcam>=0.3.0; sys_platform == "win32"  # 仅 Windows 屏幕采集，非 Windows 平台不安装
 
-# 模型导出依赖（按需安装，不打包含注释即可）
-onnx>=1.12.0
-onnxslim>=0.1.71
-onnxruntime-gpu  # GPU版本；CPU环境改用 onnxruntime
-openvino>=2024.0.0
-# tensorflow  # TFLite/SavedModel 导出（体量 ~1GB，按需取消注释）
-# paddlepaddle  # PaddlePaddle 导出（体量 ~500MB，按需取消注释）
+# 模型导出依赖已拆分为可选（约 540MB，不导出模型无需安装）：
+#   pip install -r requirements-export.txt        # CPU 版（默认）
+#   或 pip install -e ".[export]"                 # 等价 extras
+# 也可以不预装：在导出对话框首次导出时按提示一键安装。
+# 注意：打包（build.bat）仍要求全量安装导出依赖，见 requirements-build.txt。

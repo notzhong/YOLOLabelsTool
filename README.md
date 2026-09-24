@@ -79,6 +79,13 @@ cd YoloLabelTool
 pip install -r requirements.txt
 ```
 
+可选：需要"模型导出"功能时再装导出依赖（约 540MB，不导出模型无需安装）：
+```bash
+pip install -r requirements-export.txt   # CPU 版 onnxruntime（默认）
+# GPU 版请改装: pip uninstall -y onnxruntime && pip install onnxruntime-gpu
+```
+也可以不预装——首次导出时对话框会**询问后自动安装**（打包版则提供"复制安装命令"）。
+
 3. **运行应用**
 ```bash
 python main.py

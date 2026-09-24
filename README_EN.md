@@ -73,6 +73,13 @@ cd YOLOLabelsTool
 pip install -r requirements.txt
 ```
 
+Optional — only needed for the model-export feature (~540MB; skip if you never export):
+```bash
+pip install -r requirements-export.txt   # CPU onnxruntime (default)
+# For GPU: pip uninstall -y onnxruntime && pip install onnxruntime-gpu
+```
+You may skip this as well — the export dialog will **ask before installing** on first export (the packaged build offers a copyable install command instead).
+
 3. **Run the app**
 ```bash
 python main.py

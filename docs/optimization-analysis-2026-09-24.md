@@ -22,7 +22,10 @@
 > - ✅ P2 对话框瘦身：train_dialog.py 1,142 → 143 行（+ 4 个 Mixin，见 `src/ui/train_dialog_mixins/`）、
 >   validation_dialog.py 856 → 81 行（+ 3 个 Mixin 与 Unicode 绘制工具模块，见 `src/ui/validation_dialog_mixins/`）；
 >   两对话框 offscreen 实例化 + 配置往返/坐标换算/绘制冒烟通过，测试 176 → 181 个
-> - ⬜ P2 待办：依赖打包瘦身、画布渲染性能
+> - ✅ P2 依赖瘦身（路线 C，见 6.3）：源码 `requirements.txt` 只留核心依赖（省约 540MB），
+>   新增 `requirements-export.txt` + `.[export]` extras；导出缺包改为**询问后自动安装**（打包版降级为复制命令），
+>   `YOLO_AUTOINSTALL=False` 收回 ultralytics 静默安装；打包仍单次全量构建
+> - ⬜ P2 待办：画布渲染性能（按需）
 
 
 ## 结论速览
@@ -248,6 +251,24 @@ export-all = ["yolo-label-tool[export-onnx,export-openvino]"]
 **③ 打包体积**：spec 文件当前已用 `collect_all` 收集导出依赖。若导出依赖改为可选，打包时可提供"标准包（不含导出后端）/ 全量包"两份 spec，预计标准包可从 300–500MB 显著下降（torch 仍是主体，无法避免）。
 
 **④ Python 版本（已达成决策 Q6）**：`requires-python >= 3.10`，同步更新 `pyproject.toml` 中 `[tool.black]`/`[tool.ruff]`/`[tool.mypy]` 的 target-version 为 py310；开发验证环境为 3.12.14。
+
+### 6.3 实际落地（2026-09-24，路线 C：源码精简 + 打包仍全量 + 导出时询问安装）
+
+按维护者决策实施，满足两个约束：**用户不需要手动 pip install**、**打包仍然单次构建**。
+
+| 变更 | 说明 |
+|------|------|
+| `requirements.txt` | 只保留核心依赖（PySide6/opencv/numpy/Pillow/ultralytics/torch/pyyaml/dxcam），源码安装**直接省约 540MB** |
+| `requirements-export.txt`（新增） | 导出依赖（约 540MB），含 CPU/GPU 二选一说明与体积提示；等价 extras：`pip install -e ".[export]"` |
+| `requirements-build.txt` | **保持全量**（打包机仍装齐导出依赖，单次构建开箱即用），版本区间与检测逻辑对齐 |
+| `src/utils/export_deps.py`（新增） | 格式→依赖组声明 + 检测（组内 OR/组间 AND + 版本区间，与 ultralytics `check_requirements` 对齐），纯逻辑无 Qt，12 个单测 |
+| `src/ui/export_dialog.py` | 缺包时**询问"是否现在自动安装"→ 后台 pip install（日志实时显示）**；冻结环境自动降级为"复制安装命令"（打包产物内 pip 不可用） |
+| `main.py` | `YOLO_AUTOINSTALL=False`，收回 ultralytics 的静默 AutoUpdate，安装权统一由对话框提示管理 |
+| i18n | 中英新增 7 个键（询问/复制/成功/失败文案），移除旧"手动安装"文案 |
+
+实测佐证（conda `yolo`，site-packages 共 7.1G）：`onnxruntime-gpu 327M + openvino 180M + onnx 31M ≈ 538M`；`onnxruntime` 与 `onnxruntime-gpu` 顶层均写入 `onnxruntime/` 目录，**互斥不可共存**（已实测），故"CPU+GPU 全量安装"不可行，只能二选一。
+
+**未做（及原因）**：拆两份 spec / 打包版运行时 pip 安装——前者违背"只打包一次"，后者因打包产物不含 pip 且目标目录可能只读而不可靠（详见会话记录）。
 
 ---
 

@@ -2,39 +2,31 @@
 模型导出对话框
 """
 import importlib
-import importlib.metadata
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 from typing import Dict, List
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
+    QApplication, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QGroupBox, QFormLayout, QComboBox, QSpinBox,
     QFileDialog, QMessageBox, QTextEdit, QProgressBar
 )
 from PySide6.QtCore import QThread, Signal
 
+from src.utils.export_deps import (
+    is_frozen, manual_pip_command, missing_requirements, pip_install_command,
+)
 from src.utils.i18n import tr
 from src.utils.logger import get_logger_simple
 
 logger = get_logger_simple(__name__)
 
-# 格式 → 所需 pip 包名列表（可能与 import 名不同，如 onnxruntime-gpu）
-FORMAT_DEPENDENCIES: Dict[str, List[str]] = {
-    "ONNX": ["onnx", "onnxslim", "onnxruntime-gpu", "onnxruntime"],
-    "TensorRT": ["onnx", "onnxslim", "onnxruntime-gpu", "onnxruntime"],
-    "OpenVINO": ["openvino"],
-    "CoreML": ["coremltools"],
-    "TFLite": ["tensorflow"],
-    "TF SavedModel": ["tensorflow"],
-    "PaddlePaddle": ["paddlepaddle"],
-    "ncnn": [],
-}
 
-# pip 包名 → 可导入模块名（包名含 '-' 无法直接 import，PyInstaller 打包后 metadata 可能失效）
-_PKG_IMPORT_NAME: Dict[str, str] = {
-    "onnxruntime-gpu": "onnxruntime",
-}
+def _text(key: str, default: str) -> str:
+    """读取翻译并还原字面 \\n（QMessageBox 不解析反斜杠换行）"""
+    return tr(key, default).replace("\\n", "\n")
 
 EXPORT_FORMATS: Dict[str, str] = {
     "ONNX": "onnx",
@@ -159,6 +151,51 @@ class ExportWorker(QThread):
                     shutil.move(str(comp_src), str(comp_dest))
 
 
+class InstallWorker(QThread):
+    """依赖安装工作线程（源码/conda 环境；冻结环境不使用）"""
+
+    progress = Signal(str)
+    finished = Signal(bool, str)
+
+    def __init__(self, packages: List[str], parent=None):
+        super().__init__(parent)
+        self.packages = list(packages)
+
+    def run(self):
+        lines: List[str] = []
+        self.progress.emit("$ " + pip_install_command(self.packages))
+        try:
+            # Windows 下避免弹出控制台窗口；POSIX 上该参数为 0（默认值）
+            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            process = subprocess.Popen(
+                [sys.executable, "-m", "pip", "install", *self.packages],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                creationflags=creationflags,
+            )
+            if process.stdout is not None:
+                for raw_line in process.stdout:
+                    line = raw_line.rstrip()
+                    if line:
+                        lines.append(line)
+                        self.progress.emit(line)
+            return_code = process.wait()
+        except Exception as e:
+            logger.exception(f"依赖安装异常: {e}")
+            self.finished.emit(False, str(e))
+            return
+
+        importlib.invalidate_caches()
+        if return_code == 0:
+            self.finished.emit(True, "pip install 完成")
+        else:
+            tail = "\n".join(lines[-10:])
+            self.finished.emit(False, f"pip 退出码 {return_code}\n{tail}")
+
+
 class ExportDialog(QDialog):
     """模型导出对话框"""
 
@@ -168,6 +205,7 @@ class ExportDialog(QDialog):
         super().__init__(parent)
         self.default_model_path = default_model_path
         self.worker: ExportWorker | None = None
+        self.install_worker: InstallWorker | None = None
 
         if ExportDialog._last_browse_path is None:
             ExportDialog._last_browse_path = str(Path.cwd())
@@ -365,40 +403,105 @@ class ExportDialog(QDialog):
             ExportDialog._last_browse_path = str(Path(path).parent)
 
     def check_dependencies(self, fmt: str) -> List[str]:
-        """检查目标格式所需的依赖包，返回缺失的包名列表。
+        """检查目标格式所需的依赖包（含版本区间），返回未满足的 pip 需求列表。
 
-        三重检测：1) import 模块名  2) pip 包名 metadata
-        3) 映射表 fallback（如 onnxruntime-gpu → import onnxruntime）
+        实现见 src/utils/export_deps.py：与 ultralytics 的 check_requirements
+        对齐版本区间，避免"包已存在但版本过低"被放行后触发静默 AutoUpdate。
         """
-        missing = []
-        pkgs = FORMAT_DEPENDENCIES.get(fmt, [])
-        for pkg in pkgs:
-            found = False
-            # 1) 按模块名导入
-            try:
-                importlib.import_module(pkg)
-                found = True
-            except ImportError:
-                pass
-            # 2) 按 pip 包名检测
-            if not found:
-                try:
-                    importlib.metadata.version(pkg)
-                    found = True
-                except importlib.metadata.PackageNotFoundError:
-                    pass
-            # 3) fallback 映射（用于 onnxruntime-gpu → onnxruntime 等）
-            if not found:
-                fallback = _PKG_IMPORT_NAME.get(pkg)
-                if fallback:
-                    try:
-                        importlib.import_module(fallback)
-                        found = True
-                    except ImportError:
-                        pass
-            if not found:
-                missing.append(pkg)
-        return missing
+        return missing_requirements(fmt)
+
+    def _resolve_missing_deps(self, fmt: str, missing: List[str]) -> bool:
+        """缺依赖处理：询问用户是否自动安装。
+
+        - 源码/conda 环境：确认后后台执行 pip install（不阻塞 UI）；
+        - 冻结（打包）环境：pip 不可用，退化为"复制安装命令"。
+
+        返回 True 表示可继续导出；False 表示本次导出中止
+        （已交由安装线程处理，或用户取消）。
+        """
+        logger.warning(f"导出 {fmt} 缺少依赖: {', '.join(missing)}")
+
+        if is_frozen():
+            box = QMessageBox(self)
+            box.setIcon(QMessageBox.Warning)
+            box.setWindowTitle(tr("missing_deps_title", "缺少依赖"))
+            box.setText(_text(
+                "missing_deps_frozen_msg",
+                "导出 {fmt} 需要以下依赖包：\n\n{packages}\n\n"
+                "打包版无法自动安装。请复制下方命令，在具备 Python 环境的机器上执行后重试：\n{command}",
+            ).format(
+                fmt=fmt,
+                packages=", ".join(missing),
+                command=manual_pip_command(missing),
+            ))
+            copy_btn = box.addButton(
+                tr("deps_copy_command_btn", "复制安装命令"), QMessageBox.ActionRole
+            )
+            box.addButton(tr("cancel_btn", "取消"), QMessageBox.RejectRole)
+            box.exec()
+            if box.clickedButton() is copy_btn:
+                QApplication.clipboard().setText(manual_pip_command(missing))
+                QMessageBox.information(
+                    self,
+                    tr("deps_command_copied_title", "已复制"),
+                    _text(
+                        "deps_command_copied_msg",
+                        "安装命令已复制到剪贴板：\n\n{command}",
+                    ).format(command=manual_pip_command(missing)),
+                )
+            return False
+
+        answer = QMessageBox.question(
+            self,
+            tr("missing_deps_title", "缺少依赖"),
+            _text(
+                "deps_install_ask_msg",
+                "导出 {fmt} 需要以下依赖包：\n\n{packages}\n\n"
+                "是否现在自动安装？（需要联网，下载量可能达数百 MB）",
+            ).format(fmt=fmt, packages=", ".join(missing)),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if answer != QMessageBox.Yes:
+            return False
+        return self._start_install(missing)
+
+    def _start_install(self, packages: List[str]) -> bool:
+        """后台安装依赖；本次导出先中止，安装完成后由用户重新点击导出。"""
+        self.log_text.clear()
+        self.log_text.setVisible(True)
+        self.progress_bar.setVisible(True)
+        self.export_btn.setEnabled(False)
+        self.install_worker = InstallWorker(packages, self)
+        self.install_worker.progress.connect(self.on_progress)
+        self.install_worker.finished.connect(self.on_install_finished)
+        self.install_worker.start()
+        return False
+
+    def on_install_finished(self, success: bool, message: str):
+        self.progress_bar.setVisible(False)
+        self.export_btn.setEnabled(True)
+        if success:
+            logger.info(f"依赖安装完成: {message}")
+            QMessageBox.information(
+                self,
+                tr("success", "成功"),
+                _text(
+                    "deps_install_success_msg",
+                    "依赖安装完成。\n请重新点击“导出”开始导出。",
+                ),
+            )
+        else:
+            logger.error(f"依赖安装失败: {message}")
+            command = manual_pip_command(self.install_worker.packages)
+            QMessageBox.critical(
+                self,
+                tr("error", "错误"),
+                _text(
+                    "deps_install_failed_msg",
+                    "依赖安装失败：\n\n{message}\n\n可手动执行：\n{command}",
+                ).format(message=message, command=command),
+            )
 
     def validate(self) -> bool:
         model_path = self.model_edit.text().strip()
@@ -425,13 +528,7 @@ class ExportDialog(QDialog):
 
         fmt = self.format_combo.currentText()
         missing = self.check_dependencies(fmt)
-        if missing:
-            logger.warning(f"导出 {fmt} 缺少依赖: {', '.join(missing)}")
-            msg = tr("missing_deps_msg",
-                "导出 {fmt} 需要以下依赖包：\n\n{packages}\n\n请手动安装后重试：\npip install {install_args}").format(
-                    fmt=fmt, packages=", ".join(missing),
-                    install_args=" ".join(missing))
-            QMessageBox.warning(self, tr("missing_deps_title", "缺少依赖"), msg)
+        if missing and not self._resolve_missing_deps(fmt, missing):
             return
 
         model_path = self.model_edit.text().strip()
