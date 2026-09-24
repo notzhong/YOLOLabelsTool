@@ -100,6 +100,15 @@ class ProgressCallback:
             pass
 
 
+def _default_output_dir() -> str:
+    """训练输出默认目录：锚定应用根（源码=仓库根，打包=exe 目录），避免随启动 CWD 漂移"""
+    import sys
+
+    if getattr(sys, "frozen", False) and getattr(sys, "executable", None):
+        return str(Path(sys.executable).resolve().parent / "runs" / "train")
+    return str(Path(__file__).resolve().parents[1] / "runs" / "train")
+
+
 class YOLOTrainer(QObject):
     """YOLO模型训练器，支持异步训练和进度跟踪"""
 
@@ -193,7 +202,7 @@ class YOLOTrainer(QObject):
 
         # 设置默认输出目录
         if 'output_dir' not in self.config:
-            self.config['output_dir'] = str(Path.cwd() / "runs" / "train")
+            self.config['output_dir'] = _default_output_dir()
 
         self._log("训练参数设置完成")
         return True
@@ -483,7 +492,7 @@ class YOLOTrainer(QObject):
         return {
             'model_path': '',
             'data_yaml': '',
-            'output_dir': str(Path.cwd() / "runs" / "train"),
+            'output_dir': _default_output_dir(),
             'run_name': 'train',
             'epochs': 300,
             'imgsz': 640,

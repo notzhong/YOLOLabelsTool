@@ -20,6 +20,10 @@ FORBIDDEN = [
         re.compile(r"""_annotation_dir\s*=\s*['"]annotations['"]"""),
         "annotations 标注目录",
     ),
+    (
+        re.compile(r"""Path\.cwd\(\)\s*/\s*['"]runs"""),
+        "runs/ 训练输出目录",
+    ),
 ]
 
 
