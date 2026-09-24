@@ -5,7 +5,6 @@ import pytest
 import src.utils.i18n as i18n_module
 from src.utils.i18n import TranslationManager
 
-
 ZH_INI = "[translations]\ngreeting = 你好\nShared = 中文\n"
 EN_INI = "[translations]\ngreeting = Hello\n"
 

@@ -14,7 +14,6 @@ from src.core.annotation import (
     DeleteAnnotationCommand,
 )
 
-
 # ==================== Annotation 数据结构 ====================
 
 class TestAnnotation:
@@ -266,7 +265,7 @@ class TestAnnotationManagerYoloIO:
         annotation_manager.import_from_yolo_format(target, lines, 200, 300)
         restored = annotation_manager.get_annotations(target)
         assert len(restored) == 3
-        for orig, got in zip(sample_annotations, restored):
+        for orig, got in zip(sample_annotations, restored, strict=False):
             assert got.x == pytest.approx(orig.x, abs=1e-3)
             assert got.y == pytest.approx(orig.y, abs=1e-3)
             assert got.class_id == orig.class_id

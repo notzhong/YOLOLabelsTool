@@ -7,7 +7,12 @@ from pathlib import Path
 import pytest
 
 from src.utils import logger as logger_module
-from src.utils.logger import _get_app_root, get_logger, get_logger_simple, handle_exception
+from src.utils.logger import (
+    _get_app_root,
+    get_logger,
+    get_logger_simple,
+    handle_exception,
+)
 
 
 @pytest.fixture(autouse=True)

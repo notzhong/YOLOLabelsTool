@@ -2,7 +2,6 @@
 
 import json
 
-import pytest
 import yaml
 
 from src.core.class_manager import ClassManager

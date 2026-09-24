@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 from src.core.image_manager import ImageManager
