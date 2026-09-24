@@ -14,6 +14,26 @@ from typing import Optional, Callable, Any
 import threading
 
 
+def _get_app_root() -> Path:
+    """应用根目录：兼容 PyInstaller 打包与源码运行。
+
+    优先级：
+    1. PyInstaller 单文件模式解压目录（sys._MEIPASS）——只读
+    2. 可执行文件所在目录（打包目录模式，日志/配置通常应与 exe 同级）
+    3. 源码模式：本文件上两级（仓库根目录）
+    """
+    import sys
+
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        return Path(meipass)
+
+    if getattr(sys, "frozen", False) and getattr(sys, "executable", None):
+        return Path(sys.executable).resolve().parent
+
+    return Path(__file__).resolve().parents[2]
+
+
 def get_logger(name: str, level: int = logging.INFO) -> logging.Logger:
     """
     获取配置好的日志记录器
@@ -33,9 +53,16 @@ def get_logger(name: str, level: int = logging.INFO) -> logging.Logger:
     
     logger.setLevel(level)
     
-    # 创建 logs 目录（如果不存在）
-    log_dir = Path("logs")
-    log_dir.mkdir(exist_ok=True)
+    # 创建 logs 目录（如果不存在）—— 固定在可执行文件/项目根目录，
+    # 不依赖当前工作目录；兼容 PyInstaller 打包（sys._MEIPASS / sys.executable）
+    app_root = _get_app_root()
+    log_dir = app_root / "logs"
+    try:
+        log_dir.mkdir(exist_ok=True)
+    except OSError:
+        # 只读安装目录等场景：回退到用户主目录，保证日志功能可用
+        log_dir = Path.home() / ".yolo_label_tool" / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
     
     # 按日期命名的日志文件
     date_str = datetime.now().strftime("%Y-%m-%d")

@@ -32,9 +32,25 @@ class TranslationManager:
             cls._instance = cls()
         return cls._instance
 
+    @staticmethod
+    def _translation_dir() -> Path:
+        """定位翻译目录：兼容 PyInstaller 打包（sys._MEIPASS）与源码运行。
+
+        打包时翻译文件作为数据文件放在 _MEIPASS 解压目录；源码运行时
+        位于仓库根目录（本文件上两级）。不依赖当前工作目录。
+        """
+        import sys
+
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            candidate = Path(meipass) / "translations"
+            if candidate.exists():
+                return candidate
+        return Path(__file__).resolve().parents[2] / "translations"
+
     def load_all_translations(self):
         """从文件加载所有语言的翻译"""
-        translation_dir = Path("translations")
+        translation_dir = self._translation_dir()
         if not translation_dir.exists():
             logger.warning(f"翻译目录不存在: {translation_dir}")
             return
@@ -112,7 +128,7 @@ class TranslationManager:
 
     def save_translation_file(self, language: str):
         """保存翻译文件到INI（合并现有翻译，不覆盖）"""
-        translation_dir = Path("translations")
+        translation_dir = self._translation_dir()
         translation_dir.mkdir(parents=True, exist_ok=True)
 
         lang_file = translation_dir / f"{language}.ini"

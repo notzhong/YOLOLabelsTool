@@ -115,6 +115,10 @@ try:
     DXCAM_AVAILABLE = True
 except ImportError:
     DXCAM_AVAILABLE = False
+except AttributeError:
+    # dxcam 仅支持 Windows：在导入链深处直接调用 Windows 专属 API，
+    # 非 Windows 平台以 AttributeError 形式失败（而非 ImportError）
+    DXCAM_AVAILABLE = False
 
 
 
