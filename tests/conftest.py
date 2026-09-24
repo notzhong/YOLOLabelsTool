@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+
 from src.core.annotation import Annotation, AnnotationManager
 from src.core.class_manager import ClassManager
 
@@ -41,3 +42,28 @@ def class_manager_with_classes(class_manager):
     cm.add_class("car", (0, 255, 0))
     cm.add_class("dog", (0, 0, 255))
     return cm
+
+
+@pytest.fixture
+def image_manager():
+    from src.core.image_manager import ImageManager
+
+    return ImageManager()
+
+
+@pytest.fixture
+def real_image_factory(tmp_path):
+    """生成真实 PNG 图片，返回路径字符串"""
+    from PIL import Image
+
+    created = []
+
+    def _create(name="img.png", size=(64, 48), color=(0, 0, 255)):
+        path = tmp_path / name
+        Image.new("RGB", size, color).save(path)
+        created.append(str(path))
+        return str(path)
+
+    yield _create
+    # tmp_path 由 pytest 自动清理，无需手动删除
+
