@@ -1,5 +1,7 @@
 """src/utils/yolo_exporter.py 单元测试"""
 
+from pathlib import Path
+
 import pytest
 import yaml
 
@@ -123,8 +125,41 @@ class TestYOLOExporterFullExport:
         YOLOExporter().export(im, annotation_manager_in_tmp, class_manager_person, str(out))
 
         lines = (out / "train.txt").read_text(encoding="utf-8").splitlines()
+        assert lines, "train.txt 不应为空"
         for line in lines:
+            # 列表文件必须是 POSIX 风格相对路径：ultralytics 按正斜杠解析，
+            # Windows 上写成反斜杠会导致训练找不到图片（回归防护）
             assert line.startswith("images/train/")
+            assert "\\" not in line, f"列表文件出现反斜杠（Windows 回归）: {line!r}"
+            assert line == f"images/train/{Path(line).name}"
+
+
+class TestPathListPosixSeparator:
+    """列表文件路径分隔符不变量。
+
+    锚点：`images` 与 `<subset>` 之间的分隔符必须是 `/`。旧实现用
+    `str(Path("images") / subset / name)`，在 Windows 上产出 `images\\train\\a.png`，
+    ultralytics 按 POSIX 风格解析列表文件 → 训练时找不到图片；本断言在
+    Windows runner 上直接钉死该行为，Linux 上亦不误报。
+    """
+
+    @pytest.mark.parametrize(
+        "image_path",
+        [
+            "a.png",
+            r"D:\data\train\b.png",   # Windows 形态（Windows runner 上会按分隔符解析）
+            "c d.png",                # 文件名含空格
+        ],
+    )
+    def test_path_list_uses_posix_separator(self, tmp_path, image_path):
+        out = tmp_path / "lists"
+        YOLOExporter()._export_path_list(out, [image_path], "train")
+
+        line = out.read_text(encoding="utf-8").strip()
+        # 文件名提取遵循宿主平台语义，断言只锁定我们拼接的分隔符
+        expected = f"images/train/{Path(image_path).name}"
+        assert line == expected
+        assert line.startswith("images/train/")
 
 
 class TestYOLOExporterSingleAndCustom:

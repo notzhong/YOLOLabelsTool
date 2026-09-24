@@ -257,11 +257,16 @@ class YOLOExporter:
         image_paths: List[str],
         subset: str
     ):
-        """导出路径列表文件"""
+        """导出路径列表文件。
+
+        注意：列表文件路径必须使用**正斜杠**——ultralytics/YOLO 按 POSIX 风格
+        解析 train.txt/val.txt/test.txt，Windows 上若写成 `images\\train\\a.png`
+        会导致训练时找不到图片。
+        """
         with open(output_file, 'w', encoding='utf-8') as f:
             for image_path in image_paths:
                 image_name = Path(image_path).name
-                rel_path = str(Path("images") / subset / image_name)
+                rel_path = "/".join(["images", subset, image_name])
                 f.write(rel_path + "\n")
 
     def _build_names_config(self, class_manager: ClassManager):
