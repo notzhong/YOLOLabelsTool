@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.utils.i18n import tr
+from src.utils.logger import _get_app_root
 
 class ThemeLanguageMixin:
     """主题与语言 Mixin：QSS 主题应用/切换、语言切换与 UI 文本刷新"""
@@ -27,13 +28,13 @@ class ThemeLanguageMixin:
     def apply_theme(self, theme_name: str):
         """应用指定主题"""
         if theme_name == "dark":
-            qss_path = Path("qss/dark_theme.qss")
+            qss_path = Path(_get_app_root(), "qss", "dark_theme.qss")
         elif theme_name == "light":
-            qss_path = Path("qss/light_theme.qss")
+            qss_path = Path(_get_app_root(), "qss", "light_theme.qss")
         elif theme_name == "colorful":
-            qss_path = Path("qss/colorful_theme.qss")
+            qss_path = Path(_get_app_root(), "qss", "colorful_theme.qss")
         elif theme_name == "eyecare":
-            qss_path = Path("qss/eyecare_theme.qss")
+            qss_path = Path(_get_app_root(), "qss", "eyecare_theme.qss")
         else:
             self.logger.warning(f"未知主题: {theme_name}, 使用默认主题")
             return

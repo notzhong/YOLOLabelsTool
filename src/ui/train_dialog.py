@@ -24,6 +24,7 @@ from src.ui.train_dialog_mixins import (
     TrainTabsMixin,
 )
 from src.utils.i18n import tr
+from src.utils.logger import _get_app_root
 from yolo_tool import YOLOTrainer
 
 
@@ -47,7 +48,8 @@ class TrainDialog(
         self.default_model_path = default_model_path
         
         # 配置文件路径
-        self.config_file_path = Path("config/config.ini")
+        # 训练配置写入应用根目录（与主窗口一致，避免随启动 CWD 漂移）
+        self.config_file_path = _get_app_root() / "config" / "config.ini"
         self.config_file_path.parent.mkdir(parents=True, exist_ok=True)
         self.config_parser = configparser.ConfigParser()
         

@@ -25,7 +25,7 @@ from src.core.class_manager import ClassManager
 from src.core.model_manager import ModelManager
 from src.utils.yolo_exporter import YOLOExporter
 
-from src.utils.logger import get_logger_simple
+from src.utils.logger import _get_app_root, get_logger_simple
 from src.utils.i18n import tr
 
 from src.ui.main_window_mixins import (
@@ -53,8 +53,8 @@ class MainWindow(
         # 主题相关 - 必须在任何方法调用之前初始化
         self.current_theme = "dark"  # 默认使用黑夜主题
         
-        # 配置管理器
-        self.config_file_path = Path("config/config.ini")
+        # 配置管理器（应用根目录锚定，避免随启动 CWD 漂移）
+        self.config_file_path = _get_app_root() / "config" / "config.ini"
         self.config = configparser.ConfigParser()
         
         # 日志记录器
@@ -136,8 +136,9 @@ class MainWindow(
         # 加载QSS样式
         self.load_qss_style()
 
-        if Path('icon.ico').exists():
-            self.setWindowIcon(QPixmap('icon.ico'))
+        icon_path = _get_app_root() / "icon.ico"
+        if icon_path.exists():
+            self.setWindowIcon(QPixmap(str(icon_path)))
 
         # 设置键盘快捷键
         self._setup_shortcuts()

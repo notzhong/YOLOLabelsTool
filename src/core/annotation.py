@@ -9,7 +9,7 @@ from dataclasses import dataclass, asdict
 from typing import List, Dict, Optional, Tuple, Any
 from pathlib import Path
 
-from src.utils.logger import get_logger_simple
+from src.utils.logger import _get_app_root, get_logger_simple
 
 
 @dataclass
@@ -177,7 +177,8 @@ class AnnotationManager:
 
     def __init__(self):
         self._annotations: Dict[str, List[Annotation]] = {}
-        self._annotation_dir = "annotations"
+        # 标注目录锚定应用根目录：随 CWD 漂移会导致跨目录启动时标注"丢失"
+        self._annotation_dir = str(_get_app_root() / "annotations")
 
         # 历史记录栈
         self._undo_stack: List[Command] = []
