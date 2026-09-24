@@ -7,6 +7,10 @@
 
 > **执行进展（2026-09-24 更新）**：
 > - ✅ P0 全部完成：core/utils 层 **176 个单元测试**（覆盖率 83%，单模块 87%~97%），torch 显式声明
+>   - 补记（2026-09-24）：`tests/test_*.py` 曾被 .gitignore 中面向仓库根目录临时脚本的
+>     `test_*.py` 规则误伤，5041be9 实际只入库了 `conftest.py`——**仓库与 CI 中测试数曾为 0**
+>     （CI 覆盖率门禁实际不可能通过）。已新增否定规则 `!tests/test_*.py`，补入 9 个测试模块，
+>     现为 181 个用例；全新 clone 按 CI 口径（ruff + pytest --cov-fail-under=80）复验通过。
 > - ✅ P1 全部完成：pre-commit + GitHub Actions CI（ruff + pytest，3.10/3.12 × Linux/Windows 矩阵）、
 >   相对路径修复（`_get_app_root` / `_translation_dir`，含 _MEIPASS 与只读目录回退）、
 >   平台守卫（win32_helpers PlatformError + dxcam AttributeError 捕获 + 环境标记）、
@@ -15,7 +19,7 @@
 >   （theme_language / panels / image_actions / class_actions / model_actions，见 `src/ui/main_window_mixins/`），
 >   MainWindow 瘦身至约 830 行；方法体逐字节保留，offscreen 实例化 + update_ui_texts 全链路冒烟通过
 >   （后续修正：首次拆分脚本引入了重复空行，已用拆分前原文重新生成，AST 逐字节比对通过）
-> - ✅ P2 对话框瘦身：train_dialog.py 1,142 → 139 行（+ 4 个 Mixin，见 `src/ui/train_dialog_mixins/`）、
+> - ✅ P2 对话框瘦身：train_dialog.py 1,142 → 143 行（+ 4 个 Mixin，见 `src/ui/train_dialog_mixins/`）、
 >   validation_dialog.py 856 → 81 行（+ 3 个 Mixin 与 Unicode 绘制工具模块，见 `src/ui/validation_dialog_mixins/`）；
 >   两对话框 offscreen 实例化 + 配置往返/坐标换算/绘制冒烟通过，测试 176 → 181 个
 > - ⬜ P2 待办：依赖打包瘦身、画布渲染性能
@@ -183,7 +187,7 @@ train_dialog.py 五个标签页可各拆一个模块；validation_dialog.py 可�
 
 | 文件 | 拆分前 | 拆分后 | 新模块 |
 |------|--------|--------|--------|
-| `train_dialog.py` | 1,142 行 | **139 行** | `train_dialog_mixins/`：tabs(432) / browse(78) / config(452) / actions(122) |
+| `train_dialog.py` | 1,142 行 | **143 行** | `train_dialog_mixins/`：tabs(432) / browse(78) / config(452) / actions(122) |
 | `validation_dialog.py` | 856 行 | **81 行** | `validation_dialog_mixins/`：ui(212) / window_pick(303) / detect(270) + `unicode_text.py`(75) |
 
 补充说明：
