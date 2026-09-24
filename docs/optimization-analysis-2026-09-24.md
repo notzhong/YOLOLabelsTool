@@ -14,7 +14,11 @@
 > - ✅ P2 部分完成：main_window.py（2,053 行）已按职责拆分为 5 个 Mixin
 >   （theme_language / panels / image_actions / class_actions / model_actions，见 `src/ui/main_window_mixins/`），
 >   MainWindow 瘦身至约 830 行；方法体逐字节保留，offscreen 实例化 + update_ui_texts 全链路冒烟通过
-> - ⬜ P2 待办：训练/验证对话框瘦身、依赖打包瘦身、画布渲染性能
+>   （后续修正：首次拆分脚本引入了重复空行，已用拆分前原文重新生成，AST 逐字节比对通过）
+> - ✅ P2 对话框瘦身：train_dialog.py 1,142 → 139 行（+ 4 个 Mixin，见 `src/ui/train_dialog_mixins/`）、
+>   validation_dialog.py 856 → 81 行（+ 3 个 Mixin 与 Unicode 绘制工具模块，见 `src/ui/validation_dialog_mixins/`）；
+>   两对话框 offscreen 实例化 + 配置往返/坐标换算/绘制冒烟通过，测试 176 → 181 个
+> - ⬜ P2 待办：依赖打包瘦身、画布渲染性能
 
 
 ## 结论速览
@@ -173,6 +177,21 @@ src/ui/
 
 train_dialog.py 五个标签页可各拆一个模块；validation_dialog.py 可将检测循环（QThread worker）与 UI 控制分离。
 
+### 4.4 实际落地（2026-09-24）
+
+两个对话框都采用与 main_window 相同的 **AST 机械抽取 + Mixin** 手法（方法体逐字节保留，脚本对生成结果做 AST 源码片段比对自校验），未改变任何信号连接与用户可见行为：
+
+| 文件 | 拆分前 | 拆分后 | 新模块 |
+|------|--------|--------|--------|
+| `train_dialog.py` | 1,142 行 | **139 行** | `train_dialog_mixins/`：tabs(432) / browse(78) / config(452) / actions(122) |
+| `validation_dialog.py` | 856 行 | **81 行** | `validation_dialog_mixins/`：ui(212) / window_pick(303) / detect(270) + `unicode_text.py`(75) |
+
+补充说明：
+
+1. validation_dialog 的检测循环仍是 `QTimer` 轮询（非 QThread），本轮只做**职责归类**，未改成线程模型——避免在无 UI 测试兜底时改变线程语义；将来若引入 pytest-qt 再考虑 worker 化。
+2. `cv2.putText` 无法渲染中文，原文件里的 Pillow 绘制辅助函数已独立为 `validation_dialog_mixins/unicode_text.py`（纯函数、不依赖 Qt），并补了 4 个单元测试（`tests/test_unicode_text.py`），使这部分逻辑首次进入 CI 覆盖范围。
+3. 存量遗留（非本轮引入）：非 Windows 平台下 `_get_screen_bounds()` 会因 win32 守卫抛 `PlatformError`，而其中的 Qt 回退分支永远走不到；建议后续在 `get_user32()` 之前加 `is_windows()` 判断，并在非 Windows 隐藏"窗口/区域捕获"按钮（对应 2.3 建议②）。
+
 ### 4.3 硬性前置条件
 
 **拆分必须在 P0 测试落地之后进行**。main_window 是所有信号的枢纽，没有测试兜底的 2,000 行文件重构等于盲飞——这正是本轮会话把测试排在拆分之前的理由。
@@ -278,6 +297,8 @@ P0  torch 显式声明（10 分钟）
          └→ P2  main_window 拆分（2~3 天，测试+CI 兜底后进行）
              └→ P2  对话框瘦身 → 依赖瘦身 → 性能（按需）
 ```
+
+> 进度：P0 ✅、P1 ✅、P2 main_window 拆分 ✅、P2 对话框瘦身 ✅；剩余 依赖瘦身 → 性能（按需）。
 
 每步独立成 commit，均可单独回滚；P0 完成前不建议做任何结构性改动。
 
