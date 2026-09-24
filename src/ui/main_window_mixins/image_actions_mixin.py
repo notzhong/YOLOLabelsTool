@@ -76,6 +76,13 @@ class ImageActionsMixin:
                 self.annotation_manager.save_annotations(self.current_image_path, annotations)
 
             image_path = self.image_manager.get_image_path(index)
+
+            # 撤销/重做按图片作用域：换图即清栈，避免跨图片撤销的误导
+            if image_path != self.current_image_path:
+                self.annotation_manager._undo_stack.clear()
+                self.annotation_manager._redo_stack.clear()
+                self.update_undo_redo_actions()
+
             self.current_image_path = image_path
             self.current_image_index = index
 
