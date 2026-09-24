@@ -216,6 +216,8 @@ test_*.py
 check_*.py
 simple_test.py
 final_test.py
+# tests/ 目录下的正式单元测试不受上面规则影响（否则新增用例必须 git add -f）
+!tests/test_*.py
 
 # Test data directories
 tests/coco8/
