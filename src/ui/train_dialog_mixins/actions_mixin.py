@@ -115,8 +115,13 @@ class TrainActionsMixin:
         # 禁用开始按钮
         self.btn_start.setEnabled(False)
         
-        # 显示进度对话框并开始训练
+        # 阻塞运行进度对话框（模态）：正常关闭 → 结束并关闭配置对话框；
+        # 点"重新配置" → 留在本对话框改参数后重试
         if progress_dialog.start_training():
-            self.accept()  # 关闭配置对话框
+            progress_dialog.exec()
+            if getattr(progress_dialog, "reconfigure_requested", False):
+                self.btn_start.setEnabled(True)
+                return
+            self.accept()  # 训练结束/关闭 → 关闭配置对话框
         else:
             self.btn_start.setEnabled(True)

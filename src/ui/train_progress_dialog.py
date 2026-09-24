@@ -26,6 +26,8 @@ class TrainProgressDialog(QDialog):
         
         self.trainer = trainer
         self.start_time: Optional[datetime] = None
+        # 标记用户点了"重新配置"（由 TrainDialog.start_training 捕获后决定是否留在配置界面）
+        self.reconfigure_requested = False
         
         self.init_ui()
         
@@ -246,8 +248,22 @@ class TrainProgressDialog(QDialog):
             # 记录操作
             self.log_message(tr("reconfiguring_training"))
             
-            # 关闭当前对话框并返回拒绝结果
-            # 父窗口可以检测到拒绝结果并重新打开配置对话框
+            # 断开 trainer 信号：反复"重新配置"时避免旧对话框连接累积
+            for signal, slot in (
+                (self.trainer.training_started, self.on_training_started),
+                (self.trainer.progress_updated, self.on_progress_updated),
+                (self.trainer.log_message, self.on_log_message),
+                (self.trainer.training_finished, self.on_training_finished),
+                (self.trainer.training_stopped, self.on_training_stopped),
+            ):
+                try:
+                    signal.disconnect(slot)
+                except (RuntimeError, TypeError):
+                    pass
+
+            # 标记"重新配置"并关闭进度窗：TrainDialog.start_training 捕获该标记后
+            # 保持配置对话框打开，供用户修改参数后重新开始训练
+            self.reconfigure_requested = True
             self.done(QDialog.Rejected)
             
         except Exception as e:
