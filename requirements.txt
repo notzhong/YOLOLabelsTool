@@ -3,8 +3,11 @@ opencv-python>=4.8.0
 numpy>=1.24.0
 Pillow>=10.0.0
 ultralytics>=8.0.0
+# torch 由代码直接 import（train_dialog / export_dialog / yolo_train），
+# 此前仅靠 ultralytics 传递依赖提供；显式声明避免上游依赖变化导致运行时崩溃
+torch>=2.0.0
 pyyaml>=6.0
-dxcam>=0.3.0
+dxcam>=0.3.0; sys_platform == "win32"  # 仅 Windows 屏幕采集，非 Windows 平台不安装
 
 # 模型导出依赖（按需安装，不打包含注释即可）
 onnx>=1.12.0

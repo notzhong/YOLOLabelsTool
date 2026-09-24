@@ -5,8 +5,12 @@ opencv-python>=4.8.0
 numpy>=1.24.0
 Pillow>=10.0.0
 ultralytics>=8.0.0
+# torch directly imported by train_dialog / export_dialog / yolo_train;
+# previously provided only as a transitive dependency of ultralytics.
+# CUDA wheels: pip install torch --index-url https://download.pytorch.org/whl/cu121
+torch>=2.0.0
 pyyaml>=6.0
-dxcam>=0.3.0
+dxcam>=0.3.0; sys_platform == "win32"  # Windows-only screen capture
 
 # Model export dependencies (bundled into package)
 onnx>=1.12.0

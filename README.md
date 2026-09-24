@@ -1,5 +1,7 @@
 # YOLO Label Tool
 
+**简体中文** | [English](README_EN.md)
+
 基于 PySide6 的 YOLO 标注和训练工具，支持手动标注、模型辅助标注、实时窗口检测和模型训练功能。
 
 ## 功能特点
@@ -56,9 +58,10 @@
 ## 安装要求
 
 ### 环境要求
-- Python 3.8+
+- Python 3.10+（开发与测试环境为 Python 3.12）
 - PySide6
 - OpenCV
+- PyTorch（自动标注/训练功能依赖，随 `ultralytics` 一并安装，已显式声明）
 - ultralytics (YOLO模型支持和训练)
 
 ### 安装步骤
@@ -368,7 +371,10 @@ YoloLabelTool/
 ├── requirements.txt        # 依赖包列表
 ├── requirements-dev.txt    # 开发依赖
 ├── requirements-build.txt  # 打包构建依赖
-├── README.md               # 项目说明
+├── README.md               # 项目说明（中文）
+├── README_EN.md            # 项目说明（英文）
+├── docs/                   # 分析报告目录
+│   └── optimization-analysis-2026-09-24.md  # 项目优化点分析报告
 ├── YoloLabelsTrainTool.spec # PyInstaller打包配置文件
 ├── icon.ico                # 应用程序图标
 ├── yolo26n.pt              # 预训练 YOLOv26n 模型文件（可选）
@@ -494,7 +500,7 @@ A: 通过菜单"语言 → 中文/英文"切换界面语言，切换会立即生
 - **组件提取**：AnnotationCanvas、StatsPanel、ModelInfoPanel、WindowHighlighter、RegionSelector 独立封装
 - **数据集导出统一**：DatasetSplitter 委托 YOLOExporter，消除重复方法
 - **LRU 图片缓存**、**国际化 en_US 回退链**、**切图自动保存**
-- **80 个单元测试**覆盖核心数据类、命令模式、类别管理
+- **176 个单元测试**覆盖核心数据类、命令模式、类别管理、数据集划分/导出、i18n 与平台守卫（测试覆盖率 80%+）
 
 ### v2.0.0 (2026-04-26)
 - **重构**：提取 `annotation_to_yolo_lines()`、`_process_boxes()`、合并浏览方法
