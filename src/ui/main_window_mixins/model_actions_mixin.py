@@ -289,7 +289,7 @@ class ModelActionsMixin:
             default_model_path = model_info.get("path", "")
         
         # 创建训练配置对话框
-        from .train_dialog import TrainDialog
+        from src.ui.train_dialog import TrainDialog
         dialog = TrainDialog(self, default_model_path)
         
         if dialog.exec():
@@ -303,6 +303,6 @@ class ModelActionsMixin:
             model_info = self.model_manager.get_model_info()
             default_model_path = model_info.get("path", "")
 
-        from .export_dialog import ExportDialog
+        from src.ui.export_dialog import ExportDialog
         dialog = ExportDialog(self, default_model_path)
         dialog.exec()

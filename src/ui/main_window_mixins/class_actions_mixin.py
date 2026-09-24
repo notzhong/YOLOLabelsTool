@@ -116,7 +116,7 @@ class ClassActionsMixin:
 
     def add_class(self):
         """添加类别"""
-        from .class_dialog import ClassDialog
+        from src.ui.class_dialog import ClassDialog
 
         dialog = ClassDialog(self)
         # 预先分配一个不与现有颜色重复的颜色并显示在对话框中
@@ -149,7 +149,7 @@ class ClassActionsMixin:
             QMessageBox.warning(self, tr("warning"), tr("class_not_exist"))
             return
         
-        from .class_dialog import ClassDialog
+        from src.ui.class_dialog import ClassDialog
         
         dialog = ClassDialog(self)
         dialog.set_values(class_info["name"], class_info["color"])

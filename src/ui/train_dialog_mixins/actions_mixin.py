@@ -91,7 +91,7 @@ class TrainActionsMixin:
             return
         
         # 创建训练进度对话框
-        from .train_progress_dialog import TrainProgressDialog
+        from src.ui.train_progress_dialog import TrainProgressDialog
         progress_dialog = TrainProgressDialog(self.trainer, parent=self)
         
         # 断开旧连接，防止信号累积
