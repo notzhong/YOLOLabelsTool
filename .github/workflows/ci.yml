@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Lint tests (full rule set)
+        run: ruff check tests/
+
+      - name: Lint src (fatal errors only)
+        run: ruff check --select E9,F63,F7,F82 src/ yolo_tool/ main.py
+
+  test:
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.12"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov
+          pip install opencv-python-headless numpy Pillow pyyaml
+
+      - name: Run unit tests (core layer, no Qt/ultralytics required)
+        run: pytest tests/ -v --tb=short
+        env:
+          # 无头环境：纯 core 层测试不需要显示服务器
+          QT_QPA_PLATFORM: offscreen
+
+      - name: Coverage gate (core + utils >= 80%)
+        run: pytest tests/ --cov=src/core --cov=src/utils --cov-report=term --cov-fail-under=80

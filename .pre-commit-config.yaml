@@ -1,0 +1,40 @@
+# Pre-commit hooks — install: pre-commit install && pre-commit run --all-files
+repos:
+  # 基础文件卫生
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^yolo_tool/
+      - id: end-of-file-fixer
+        exclude: ^yolo_tool/
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+      - id: check-merge-conflict
+
+  # Lint：全规则执法 tests/，src/yolo_tool 仅拦致命错误（历史风格问题分批清理）
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+        files: ^(tests/|src/|main\.py)
+      - id: ruff
+        name: ruff (fatal only, src + yolo_tool)
+        args: ["--select", "E9,F63,F7,F82", "--fix"]
+        files: ^(src/|yolo_tool/|main\.py)
+
+  # 格式化（暂不强制存量文件，仅增量约束；全面 black 化另行安排）
+  - repo: https://github.com/psf/black
+    rev: 24.10.0
+    hooks:
+      - id: black
+        files: ^tests/
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        files: ^tests/
+        additional_dependencies: ["pytest>=8.0.0"]
