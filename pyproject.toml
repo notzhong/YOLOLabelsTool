@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "yolo-label-tool"
-version = "1.0.0"
+version = "2.4.0"
 description = "YOLO标注工具，支持手动标注和模型辅助标注"
 readme = "README.md"
 license = {text = "MIT"}

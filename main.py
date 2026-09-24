@@ -76,7 +76,7 @@ def main():
         # 设置应用程序信息
         app.setApplicationName("YOLO Label Tool")
         app.setOrganizationName("YoloLabelTool")
-        app.setApplicationVersion("1.0.0")
+        app.setApplicationVersion("2.4.0")
         
         # 初始化翻译管理器
         from src.utils.i18n import TranslationManager

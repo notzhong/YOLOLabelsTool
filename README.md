@@ -375,13 +375,19 @@ YOLO Label Tool 提供了完整的模型训练功能，支持详细的训练参�
 YoloLabelTool/
 ├── main.py                 # 主程序入口
 ├── pyproject.toml          # 项目配置和依赖
-├── requirements.txt        # 依赖包列表
+├── requirements.txt        # 核心依赖包列表
+├── requirements-export.txt # 导出依赖（可选，约 540MB；不导出模型无需安装）
 ├── requirements-dev.txt    # 开发依赖
-├── requirements-build.txt  # 打包构建依赖
+├── requirements-build.txt  # 打包构建依赖（全量，打包用）
 ├── README.md               # 项目说明（中文）
 ├── README_EN.md            # 项目说明（英文）
 ├── docs/                   # 分析报告目录
 │   └── optimization-analysis-2026-09-24.md  # 项目优化点分析报告
+├── tools/                  # 开发复验脚本（详见 tools/README.md）
+│   ├── verify_split.py     # Mixin 拆分保真校验（AST 逐字节比对 + 有意变更白名单）
+│   ├── verify_*.py         # 操作流程 / 决策项回归复验（offscreen）
+│   ├── smoke_*.py          # UI offscreen 冒烟（主窗口 / 对话框 / 导出依赖流程）
+│   └── mixin_split/        # ⚠️ 一次性重构脚本（会重写源码，仅供复现拆分过程）
 ├── YoloLabelsTrainTool.spec # PyInstaller打包配置文件
 ├── icon.ico                # 应用程序图标
 ├── yolo26n.pt              # 预训练 YOLOv26n 模型文件（可选）
@@ -394,15 +400,20 @@ YoloLabelTool/
 │   │   └── model_manager.py # YOLO模型管理器
 │   ├── ui/                 # 用户界面
 │   │   ├── annotation_canvas.py # 标注画布组件（QGraphicsView 封装）
-│   │   ├── main_window.py  # 主窗口（菜单、快捷键、面板协调）
+│   │   ├── main_window.py  # 主窗口骨架（菜单、快捷键、面板协调）
+│   │   ├── main_window_mixins/ # 主窗口职责 Mixin（主题语言/面板/图片/类别/模型）
 │   │   ├── panels.py       # 统计面板 + 模型信息面板
 │   │   ├── class_dialog.py # 类别编辑对话框
 │   │   ├── region_selector.py # 窗口高亮器 + 屏幕区域选择器
-│   │   ├── train_dialog.py # 训练配置对话框（5个标签页）
-│   │   ├── train_progress_dialog.py # 训练进度对话框
-│   │   └── validation_dialog.py # 实时验证/检测对话框
+│   │   ├── train_dialog.py # 训练配置对话框（骨架）
+│   │   ├── train_dialog_mixins/ # 训练配置 4 个职责 Mixin（标签页/浏览/配置/生命周期）
+│   │   ├── train_progress_dialog.py # 训练进度对话框（阻塞式 + 重新配置回配置窗）
+│   │   ├── export_dialog.py # 模型导出对话框（依赖"询问后安装"）
+│   │   ├── validation_dialog.py # 实时验证/检测对话框（骨架）
+│   │   ├── validation_dialog_mixins/ # 验证 3 个职责 Mixin + Unicode 绘制工具
 │   └── utils/              # 工具模块
 │       ├── dataset_splitter.py # 数据集划分器
+│       ├── export_deps.py   # 导出依赖声明与检测（纯逻辑，含版本区间）
 │       ├── i18n.py         # 国际化翻译管理器（预缓存 + en_US 回退）
 │       ├── logger.py       # 日志系统模块
 │       ├── widget_helpers.py # 滑块/SpinBox 同步绑定辅助类
@@ -444,6 +455,17 @@ YoloLabelTool/
 ```bash
 pytest tests/
 ```
+
+### 复验脚本（UI 层，不进 CI）
+```bash
+conda activate yolo
+export QT_QPA_PLATFORM=offscreen
+python tools/verify_split.py         # Mixin 拆分保真（改 mixin 方法体后必跑）
+python tools/verify_flow_fixes.py    # 操作流程回归
+python tools/verify_decision_fixes.py
+python tools/smoke_mainwindow.py
+```
+详见 [tools/README.md](tools/README.md)。
 
 ## 常见问题
 
@@ -487,6 +509,14 @@ A: 通过菜单"语言 → 中文/英文"切换界面语言，切换会立即生
 - 发送邮件到 developer@example.com
 
 ## 更新日志
+
+### v2.4.0 (2026-09-24)
+- **质量基建**：196 个单元测试（覆盖率 83%）+ GitHub Actions CI（ruff + pytest，Python 3.10/3.12 × Linux/Windows）、pre-commit 钩子；测试套件首次真正入库
+- **依赖瘦身**：导出依赖拆为可选（`requirements-export.txt` / `.[export]`），导出缺包时"询问后自动安装"（打包版提供复制安装命令），收回 ultralytics 静默安装
+- **结构重构**：主窗口 2,053 → 822 行，训练/验证对话框 1,142/856 → 143/81 行（按职责拆为 Mixin，方法体逐字节保留）
+- **健壮性**：配置 / QSS / 图标 / 标注 / 训练输出统一锚定应用根目录（跨 CWD 启动不再"设置失忆"或标注看似丢失）
+- **缺陷修复**：Mixin 相对导入断链（类别 / 训练 / 导出按钮不可用）、移除图片后索引错位、批量标注被旧画布覆盖、无 GPU 机器导出失败、关闭文件夹残留撤销栈、训练"重新配置"失效、撤销跨图片作用域
+- **开发工具**：新增 `tools/` 复验脚本（Mixin 保真校验、操作流程回归、offscreen 冒烟）
 
 ### v2.3.0 (2026-05-10)
 - **模型导出**：新增模型导出功能，支持 ONNX / TensorRT / OpenVINO / CoreML / TFLite / TF SavedModel / PaddlePaddle / ncnn 八种格式

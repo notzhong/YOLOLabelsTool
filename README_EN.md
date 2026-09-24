@@ -362,11 +362,17 @@ YOLOLabelsTool/
 ├── main.py                 # entry point
 ├── pyproject.toml          # project config and dependencies
 ├── requirements.txt        # runtime dependencies
+├── requirements-export.txt # optional export dependencies (~540MB)
 ├── requirements-dev.txt    # development dependencies
-├── requirements-build.txt  # packaging dependencies
+├── requirements-build.txt  # packaging dependencies (full set)
 ├── README.md               # docs (Chinese)
 ├── README_EN.md            # docs (English)
 ├── docs/                   # analysis reports
+├── tools/                  # dev verification scripts (see tools/README.md)
+│   ├── verify_split.py     # Mixin split fidelity (AST byte comparison + whitelist)
+│   ├── verify_*.py         # operation-flow / decision regression checks (offscreen)
+│   ├── smoke_*.py          # UI offscreen smokes (main window / dialogs / export deps)
+│   └── mixin_split/        # ⚠️ one-shot refactor scripts (rewrite sources; for reproducing the split)
 ├── YoloLabelsTrainTool.spec # PyInstaller build config
 ├── icon.ico                # app icon
 ├── yolo26n.pt              # pretrained YOLOv26n weights (optional)
@@ -379,15 +385,20 @@ YOLOLabelsTool/
 │   │   └── model_manager.py # YOLO model manager
 │   ├── ui/                 # user interface
 │   │   ├── annotation_canvas.py # annotation canvas (QGraphicsView)
-│   │   ├── main_window.py  # main window (menus, shortcuts, panel wiring)
+│   │   ├── main_window.py  # main window skeleton (menus, shortcuts, panel wiring)
+│   │   ├── main_window_mixins/ # main window responsibility mixins (theme/panels/images/classes/model)
 │   │   ├── panels.py       # stats panel + model info panel
 │   │   ├── class_dialog.py # class edit dialog
 │   │   ├── region_selector.py # window highlighter + screen region selector
-│   │   ├── train_dialog.py # training config dialog (5 tabs)
-│   │   ├── train_progress_dialog.py # training progress dialog
-│   │   └── validation_dialog.py # realtime verification dialog
+│   │   ├── train_dialog.py # training config dialog (skeleton)
+│   │   ├── train_dialog_mixins/ # 4 training config mixins (tabs/browse/config/lifecycle)
+│   │   ├── train_progress_dialog.py # progress dialog (blocking + reconfigure back to config)
+│   │   ├── export_dialog.py # model export dialog (ask-before-install dependencies)
+│   │   ├── validation_dialog.py # realtime verification dialog (skeleton)
+│   │   ├── validation_dialog_mixins/ # 3 verification mixins + Unicode drawing helper
 │   └── utils/              # utilities
 │       ├── dataset_splitter.py # train/val/test splitter
+│       ├── export_deps.py   # export dependency declarations + version-aware check
 │       ├── i18n.py         # translation manager (pre-cache + en_US fallback)
 │       ├── logger.py       # logging module
 │       ├── widget_helpers.py # slider/spinbox sync helpers
@@ -429,6 +440,17 @@ YOLOLabelsTool/
 ```bash
 pytest tests/
 ```
+
+### Verification scripts (UI layer, not in CI)
+```bash
+conda activate yolo
+export QT_QPA_PLATFORM=offscreen
+python tools/verify_split.py         # Mixin split fidelity (run after touching mixin methods)
+python tools/verify_flow_fixes.py    # operation-flow regression
+python tools/verify_decision_fixes.py
+python tools/smoke_mainwindow.py
+```
+See [tools/README.md](tools/README.md).
 
 ## FAQ
 
@@ -472,6 +494,14 @@ Questions or suggestions:
 - Email developer@example.com
 
 ## Changelog
+
+### v2.4.0 (2026-09-24)
+- **Quality infrastructure**: 196 unit tests (83% coverage) + GitHub Actions CI (ruff + pytest, Python 3.10/3.12 × Linux/Windows) and pre-commit hooks; the test suite is finally version-controlled
+- **Dependency slimming**: export dependencies became optional (`requirements-export.txt` / `.[export]`); missing packages are now offered for one-click install in the export dialog (the packaged build copies the command instead); ultralytics' silent auto-install is disabled
+- **Refactoring**: main window 2,053 → 822 lines; train/validation dialogs 1,142/856 → 143/81 lines (split into responsibility mixins, method bodies byte-preserved)
+- **Robustness**: config / QSS / icon / annotations / training outputs are anchored to the app root (settings no longer "forget", annotations no longer appear lost when launched from another directory)
+- **Bug fixes**: broken relative imports in mixins (add-class / train / export buttons), wrong image after removing earlier images, batch annotations overwritten by stale canvas, export failure on CPU-only machines, undo stack surviving folder close, dead "reconfigure training" flow, cross-image undo scope
+- **Dev tooling**: new `tools/` verification scripts (mixin fidelity, operation-flow regression, offscreen smokes)
 
 ### v2.3.0 (2026-05-10)
 - **Model export**: new export feature supporting ONNX / TensorRT / OpenVINO / CoreML / TFLite / TF SavedModel / PaddlePaddle / ncnn (8 formats)
