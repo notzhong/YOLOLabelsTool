@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QComboBox, QCheckBox, QFileDialog, QMessageBox, QTabWidget,
     QWidget
 )
-from PySide6.QtCore import Qt
 
 from yolo_tool import YOLOTrainer
 from src.utils.i18n import tr

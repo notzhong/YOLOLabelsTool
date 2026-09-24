@@ -10,7 +10,7 @@ import cv2
 import numpy as np
 
 from PySide6.QtCore import Qt, QTimer, QRect, QPoint
-from PySide6.QtGui import QImage, QPixmap, QCursor, QGuiApplication, QScreen
+from PySide6.QtGui import QImage, QPixmap, QCursor, QGuiApplication
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,

@@ -11,7 +11,10 @@
 >   相对路径修复（`_get_app_root` / `_translation_dir`，含 _MEIPASS 与只读目录回退）、
 >   平台守卫（win32_helpers PlatformError + dxcam AttributeError 捕获 + 环境标记）、
 >   Python 下限提升至 3.10（pyproject + README 同步）
-> - ⬜ P2 待办：拆分 main_window.py（2,053 行）、训练/验证对话框瘦身、依赖打包瘦身、画布渲染性能
+> - ✅ P2 部分完成：main_window.py（2,053 行）已按职责拆分为 5 个 Mixin
+>   （theme_language / panels / image_actions / class_actions / model_actions，见 `src/ui/main_window_mixins/`），
+>   MainWindow 瘦身至约 830 行；方法体逐字节保留，offscreen 实例化 + update_ui_texts 全链路冒烟通过
+> - ⬜ P2 待办：训练/验证对话框瘦身、依赖打包瘦身、画布渲染性能
 
 
 ## 结论速览

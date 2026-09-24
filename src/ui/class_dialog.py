@@ -7,7 +7,6 @@ from PySide6.QtWidgets import (
     QLineEdit, QPushButton, QColorDialog, QWidget,
     QFormLayout
 )
-from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QPalette
 
 from src.utils.i18n import tr

@@ -6,9 +6,9 @@ from typing import Optional
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QTextEdit, QProgressBar, QMessageBox, QGroupBox, QWidget
+    QTextEdit, QProgressBar, QMessageBox, QGroupBox
 )
-from PySide6.QtCore import Qt, Signal, Slot, QTimer
+from PySide6.QtCore import Slot, QTimer
 from PySide6.QtGui import QFont, QTextCursor
 
 from yolo_tool import YOLOTrainer

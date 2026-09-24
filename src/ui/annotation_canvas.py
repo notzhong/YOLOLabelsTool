@@ -2,17 +2,17 @@
 标注画布组件 — 封装 QGraphicsView 及所有标注渲染/交互逻辑
 """
 
-from typing import List, Optional
+from typing import List
 
 from PySide6.QtWidgets import (
     QGraphicsView, QGraphicsScene, QGraphicsPixmapItem,
     QGraphicsRectItem, QGraphicsTextItem, QGraphicsLineItem,
-    QGraphicsEllipseItem, QMenu, QGraphicsItem
+    QGraphicsEllipseItem, QMenu
 )
-from PySide6.QtCore import Qt, QPointF, QRectF, Signal, QEvent
+from PySide6.QtCore import Qt, QPointF, QRectF, Signal
 from PySide6.QtGui import (
     QPainter, QPen, QBrush, QColor, QPixmap, QAction,
-    QIcon, QMouseEvent, QWheelEvent, QCursor, QFont
+    QIcon, QMouseEvent, QWheelEvent, QFont
 )
 
 from src.core.annotation import Annotation

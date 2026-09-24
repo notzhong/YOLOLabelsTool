@@ -5,7 +5,7 @@ import os
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QGroupBox, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QTableWidget, QTableWidgetItem, QHeaderView, QSlider, QDoubleSpinBox,
+    QTableWidget, QTableWidgetItem, QSlider, QDoubleSpinBox,
 )
 from PySide6.QtGui import QFont
 from src.utils.i18n import tr

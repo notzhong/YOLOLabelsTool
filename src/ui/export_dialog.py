@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QPushButton, QGroupBox, QFormLayout, QComboBox, QSpinBox,
     QFileDialog, QMessageBox, QTextEdit, QProgressBar
 )
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import QThread, Signal
 
 from src.utils.i18n import tr
 from src.utils.logger import get_logger_simple
