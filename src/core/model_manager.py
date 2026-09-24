@@ -13,6 +13,9 @@ try:
     from ultralytics import YOLO
     YOLO_AVAILABLE = True
 except ImportError:
+    # 显式兜底 None：保证模块属性契约在无 ultralytics 环境（CI）下同样成立，
+    # 便于测试注入 FakeYOLO，也避免 NameError
+    YOLO = None
     YOLO_AVAILABLE = False
 
 from .annotation import Annotation

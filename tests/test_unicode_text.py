@@ -1,8 +1,8 @@
-"""src/ui/validation_dialog_mixins/unicode_text.py 单元测试（纯函数，无需 Qt）"""
+"""src/utils/unicode_text.py 单元测试（纯函数，无 Qt 依赖，可在 CI 无 PySide6 环境运行）"""
 
 import numpy as np
 
-from src.ui.validation_dialog_mixins.unicode_text import (
+from src.utils.unicode_text import (
     _UNICODE_FONT_CACHE,
     _draw_unicode_text,
     _draw_unicode_texts_batch,

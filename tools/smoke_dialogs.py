@@ -60,7 +60,7 @@ print(f"TrainDialog OK ({len(cfg)} 个配置键, 5 个标签页)")
 
 # ---------------- ValidationDialog ----------------
 from src.ui.validation_dialog import DXCAM_AVAILABLE, ValidationDialog  # noqa: E402
-from src.ui.validation_dialog_mixins import unicode_text  # noqa: E402
+from src.utils import unicode_text  # noqa: E402
 
 v = ValidationDialog(None, ModelManager())
 v._update_model_status()

@@ -410,10 +410,11 @@ YoloLabelTool/
 │   │   ├── train_progress_dialog.py # 训练进度对话框（阻塞式 + 重新配置回配置窗）
 │   │   ├── export_dialog.py # 模型导出对话框（依赖"询问后安装"）
 │   │   ├── validation_dialog.py # 实时验证/检测对话框（骨架）
-│   │   ├── validation_dialog_mixins/ # 验证 3 个职责 Mixin + Unicode 绘制工具
+│   │   ├── validation_dialog_mixins/ # 验证 3 个职责 Mixin（绘制工具见 utils/unicode_text.py）
 │   └── utils/              # 工具模块
 │       ├── dataset_splitter.py # 数据集划分器
 │       ├── export_deps.py   # 导出依赖声明与检测（纯逻辑，含版本区间）
+│       ├── unicode_text.py  # Unicode（中文）文本绘制（纯 Pillow/OpenCV 绘制，无 Qt）
 │       ├── i18n.py         # 国际化翻译管理器（预缓存 + en_US 回退）
 │       ├── logger.py       # 日志系统模块
 │       ├── widget_helpers.py # 滑块/SpinBox 同步绑定辅助类

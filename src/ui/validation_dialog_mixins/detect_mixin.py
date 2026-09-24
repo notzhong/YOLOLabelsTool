@@ -15,7 +15,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import QMessageBox
 
-from src.ui.validation_dialog_mixins.unicode_text import _draw_unicode_texts_batch
+from src.utils.unicode_text import _draw_unicode_texts_batch
 from src.utils.i18n import tr
 from src.utils.logger import get_logger_simple
 from src.utils.win32_helpers import get_user32

@@ -199,12 +199,12 @@ train_dialog.py 五个标签页可各拆一个模块；validation_dialog.py 可�
 | 文件 | 拆分前 | 拆分后 | 新模块 |
 |------|--------|--------|--------|
 | `train_dialog.py` | 1,142 行 | **143 行** | `train_dialog_mixins/`：tabs(432) / browse(78) / config(452) / actions(122) |
-| `validation_dialog.py` | 856 行 | **81 行** | `validation_dialog_mixins/`：ui(212) / window_pick(303) / detect(270) + `unicode_text.py`(75) |
+| `validation_dialog.py` | 856 行 | **81 行** | `validation_dialog_mixins/`：ui(212) / window_pick(303) / detect(270)；绘制工具迁至 `src/utils/unicode_text.py`(75) |
 
 补充说明：
 
 1. validation_dialog 的检测循环仍是 `QTimer` 轮询（非 QThread），本轮只做**职责归类**，未改成线程模型——避免在无 UI 测试兜底时改变线程语义；将来若引入 pytest-qt 再考虑 worker 化。
-2. `cv2.putText` 无法渲染中文，原文件里的 Pillow 绘制辅助函数已独立为 `validation_dialog_mixins/unicode_text.py`（纯函数、不依赖 Qt），并补了 4 个单元测试（`tests/test_unicode_text.py`），使这部分逻辑首次进入 CI 覆盖范围。
+2. `cv2.putText` 无法渲染中文，原文件里的 Pillow 绘制辅助函数已独立为 **`src/utils/unicode_text.py`**（纯函数、不依赖 Qt；放在 utils 层才能被无 PySide6 的 CI 收集），并补了 4 个单元测试（`tests/test_unicode_text.py`），使这部分逻辑首次进入 CI 覆盖范围。
 3. 存量遗留（非本轮引入）：非 Windows 平台下 `_get_screen_bounds()` 会因 win32 守卫抛 `PlatformError`，而其中的 Qt 回退分支永远走不到；建议后续在 `get_user32()` 之前加 `is_windows()` 判断，并在非 Windows 隐藏"窗口/区域捕获"按钮（对应 2.3 建议②）。
 
 ### 4.3 硬性前置条件

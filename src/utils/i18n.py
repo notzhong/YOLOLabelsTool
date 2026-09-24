@@ -6,7 +6,6 @@ import configparser
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QCoreApplication
 from src.utils.logger import get_logger_simple
 
 logger = get_logger_simple(__name__)

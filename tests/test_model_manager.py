@@ -78,7 +78,10 @@ class TestInitAndThresholds:
 
 class TestLoadModel:
     def test_load_success(self, mm, monkeypatch, tmp_path):
+        # 显式伪造可用状态：CI 环境未安装 ultralytics（YOLO_AVAILABLE=False），
+        # load_model 以该标志为门，必须与注入的 FakeYOLO 同步
         monkeypatch.setattr(mm_module, "YOLO", FakeYOLOCtor)
+        monkeypatch.setattr(mm_module, "YOLO_AVAILABLE", True)
         model_file = tmp_path / "model.pt"
         model_file.write_text("fake")
 
@@ -92,6 +95,7 @@ class TestLoadModel:
             raise RuntimeError("bad model")
 
         monkeypatch.setattr(mm_module, "YOLO", boom)
+        monkeypatch.setattr(mm_module, "YOLO_AVAILABLE", True)
         assert mm.load_model("/nonexistent.pt") is False
         assert mm.model_loaded is False
 

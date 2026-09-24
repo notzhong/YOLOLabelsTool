@@ -1,7 +1,7 @@
 """
-Unicode 文本绘制工具
+Unicode 文本绘制工具（纯逻辑、无 Qt 依赖 —— 可在无 PySide6 环境直接测试）
 
-从 validation_dialog.py 拆分（P2 重构）：cv2.putText 无法渲染中文，
+从 validation_dialog.py 拆分（P2 重构）后迁入 utils：cv2.putText 无法渲染中文，
 这里用 Pillow 在 OpenCV BGR 图像上绘制 Unicode 文本。
 """
 

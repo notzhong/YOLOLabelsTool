@@ -108,9 +108,7 @@ origin_funcs = {
     for n in ast.parse(valid_origin).body
     if isinstance(n, ast.FunctionDef)
 }
-draw_text = (ROOT / "src/ui/validation_dialog_mixins/unicode_text.py").read_text(
-    encoding="utf-8"
-)
+draw_text = (ROOT / "src/utils/unicode_text.py").read_text(encoding="utf-8")
 draw_funcs = [
     n for n in ast.parse(draw_text).body if isinstance(n, ast.FunctionDef)
 ]

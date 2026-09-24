@@ -395,10 +395,11 @@ YOLOLabelsTool/
 │   │   ├── train_progress_dialog.py # progress dialog (blocking + reconfigure back to config)
 │   │   ├── export_dialog.py # model export dialog (ask-before-install dependencies)
 │   │   ├── validation_dialog.py # realtime verification dialog (skeleton)
-│   │   ├── validation_dialog_mixins/ # 3 verification mixins + Unicode drawing helper
+│   │   ├── validation_dialog_mixins/ # 3 verification mixins (drawing helper: utils/unicode_text.py)
 │   └── utils/              # utilities
 │       ├── dataset_splitter.py # train/val/test splitter
 │       ├── export_deps.py   # export dependency declarations + version-aware check
+│       ├── unicode_text.py  # Unicode text drawing (pure Pillow/OpenCV, no Qt)
 │       ├── i18n.py         # translation manager (pre-cache + en_US fallback)
 │       ├── logger.py       # logging module
 │       ├── widget_helpers.py # slider/spinbox sync helpers
