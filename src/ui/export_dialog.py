@@ -90,7 +90,12 @@ class ExportWorker(QThread):
             self.progress.emit(f"开始导出为 {self.fmt} 格式...")
             dest = Path(self.output_file)
 
-            result = model.export(format=self.fmt, imgsz=self.imgsz, device=0)
+            # GPU 可用时用 0 加速；无 CUDA 的机器必须走 CPU，
+            # 否则 ultralytics select_device(0) 直接报错（engine 格式另有明确断言）
+            import torch
+
+            device = 0 if torch.cuda.is_available() else "cpu"
+            result = model.export(format=self.fmt, imgsz=self.imgsz, device=device)
 
             if result is not None:
                 src = Path(str(result))

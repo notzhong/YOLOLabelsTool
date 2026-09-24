@@ -25,6 +25,13 @@
 > - ✅ P2 依赖瘦身（路线 C，见 6.3）：源码 `requirements.txt` 只留核心依赖（省约 540MB），
 >   新增 `requirements-export.txt` + `.[export]` extras；导出缺包改为**询问后自动安装**（打包版降级为复制命令），
 >   `YOLO_AUTOINSTALL=False` 收回 ultralytics 静默安装；打包仍单次全量构建
+> - ✅ 用户操作流程代码审查（2026-09-24）：共修复 6 处缺陷——
+>   Mixin 相对导入断链（新增类别/训练/导出/开始训练点击即 ModuleNotFoundError，`e061216`）、
+>   CWD 相对路径 ×5（config/qss/icon/**annotations** 锚定 `_get_app_root`，含标注数据目录）、
+>   移除图片后索引错位（实测误显下一张）、批量标注不刷新画布（随后切图会覆盖批量结果）、
+>   导出硬编码 `device=0`（无 CUDA 机器报错）、关夹残留 undo/redo 栈（孤儿标注文件）；
+>   新增 2 个守卫测试（Mixin 导入卫生 + 路径卫生，纯文本 CI 可跑）
+> - ⬜ 待决策遗留：训练"重新配置"流程断裂（重开配置 vs 移除按钮）；撤销栈跨图片（按图隔离 vs 现状）
 > - ⬜ P2 待办：画布渲染性能（按需）
 
 

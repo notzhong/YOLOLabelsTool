@@ -242,6 +242,10 @@ class ModelActionsMixin:
             
             # 更新图片列表显示
             self.update_image_list()
+
+            # 刷新当前图片画布：批量结果可能已覆盖当前图片的标注，
+            # 不刷新的话，随后切图/保存会用旧画布把批量结果覆盖掉
+            self.load_annotations_for_current_image()
             
             # 显示结果
             QMessageBox.information(

@@ -33,6 +33,10 @@ class ImageActionsMixin:
         """加载指定路径的图片文件夹（供对话框和自动加载共用）"""
         self._last_browse_path = folder_path
         self._last_folder_path = folder_path
+        # 新文件夹 = 新的撤销上下文：清空指向旧文件夹图片的 undo/redo 栈
+        self.annotation_manager._undo_stack.clear()
+        self.annotation_manager._redo_stack.clear()
+        self.update_undo_redo_actions()
         self.image_manager.load_folder(folder_path)
         self.update_image_list()
         self.update_stats()
@@ -46,6 +50,11 @@ class ImageActionsMixin:
         self.image_manager._current_folder = None
         self.image_manager.clear_cache()
         self.annotation_manager._annotations.clear()
+        # 关夹后 undo/redo 栈中的命令指向已关闭的图片，必须清空，
+        # 否则 Ctrl+Z 仍会按旧路径把标注写回磁盘（孤儿标注文件）
+        self.annotation_manager._undo_stack.clear()
+        self.annotation_manager._redo_stack.clear()
+        self.update_undo_redo_actions()
         self._last_folder_path = ""
         self.current_image_path = None
         self.current_image_index = 0
@@ -302,11 +311,14 @@ class ImageActionsMixin:
         if current_was_affected or self.current_image_path is None:
             self.load_image(0)
         else:
-            # 当前图片还在列表中，但索引可能已变化，找回来
-            new_index = self.current_image_index
-            if new_index >= total:
-                new_index = total - 1
-            self.load_image(new_index)
+            # 当前图片还在列表中，但移除前面的图片会改变索引 → 按路径重定位
+            paths = [
+                self.image_manager.get_image_path(i) for i in range(total)
+            ]
+            if self.current_image_path in paths:
+                self.load_image(paths.index(self.current_image_path))
+            else:
+                self.load_image(0)
 
     def prev_image(self):
         """上一张图片"""
