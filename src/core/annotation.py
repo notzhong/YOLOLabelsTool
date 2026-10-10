@@ -192,18 +192,34 @@ class AnnotationManager:
     
     def _legacy_annotation_path(self, image_path: str) -> str:
         """获取旧版标注文件路径（仅使用文件名）"""
+        if not image_path:
+            raise ValueError(f"image_path 不能为空: {image_path!r}")
         image_name = Path(image_path).stem
         return os.path.join(self._annotation_dir, f"{image_name}.json")
 
     def get_annotation_path(self, image_path: str) -> str:
-        """获取标注文件路径"""
+        """获取标注文件路径
+
+        image_path 为空（未加载图片）时抛出 ValueError：Path(None) 的
+        TypeError 只会暴露 pathlib 内部细节，看不出是"没加载图片"这个真实原因。
+        """
+        if not image_path:
+            raise ValueError(f"image_path 不能为空: {image_path!r}")
         image_name = Path(image_path).stem
         # 基于全路径生成短 Hash，避免同名文件冲突
         digest = hashlib.md5(image_path.encode("utf-8", errors="ignore")).hexdigest()[:8]
         return os.path.join(self._annotation_dir, f"{image_name}_{digest}.json")
     
     def save_annotations(self, image_path: str, annotations: List[Annotation]):
-        """保存标注到文件"""
+        """保存标注到文件
+
+        写路径对空 image_path 快速失败：静默返回会让调用方以为标注已落盘，
+        实际上是丢数据；抛 ValueError 则问题在源头就暴露。
+        """
+        if not image_path:
+            raise ValueError(
+                f"拒绝保存标注：image_path 为空，{len(annotations)} 条标注会被丢弃"
+            )
         annotation_path = self.get_annotation_path(image_path)
 
         if not annotations:
@@ -225,7 +241,9 @@ class AnnotationManager:
         self._annotations[image_path] = annotations
     
     def load_annotations(self, image_path: str) -> List[Annotation]:
-        """从文件加载标注"""
+        """从文件加载标注（未加载图片时返回空列表，不抛异常）"""
+        if not image_path:
+            return []
         annotation_path = self.get_annotation_path(image_path)
         
         if not os.path.exists(annotation_path):
@@ -251,14 +269,23 @@ class AnnotationManager:
             return []
     
     def get_annotations(self, image_path: str) -> List[Annotation]:
-        """获取指定图片的标注（优先从缓存中获取）"""
+        """获取指定图片的标注（优先从缓存中获取）
+
+        未加载图片时返回空列表而非抛异常——读路径不该因为"没有图"而崩溃，
+        拦截该情况的职责在 UI 层。注意不写入缓存，避免 None 污染
+        _annotations 进而虚增 get_statistics 的图片数。
+        """
+        if not image_path:
+            return []
         if image_path in self._annotations:
             return self._annotations[image_path]
         
         return self.load_annotations(image_path)
     
     def has_annotations(self, image_path: str) -> bool:
-        """检查是否有标注"""
+        """检查是否有标注（未加载图片时返回 False）"""
+        if not image_path:
+            return False
         annotation_path = self.get_annotation_path(image_path)
         if os.path.exists(annotation_path):
             return True
@@ -280,6 +307,8 @@ class AnnotationManager:
     
     def clear_annotations(self, image_path: str):
         """清除指定图片的所有标注"""
+        if not image_path:
+            raise ValueError(f"拒绝清除标注：image_path 为空: {image_path!r}")
         self._annotations[image_path] = []
         
         # 删除新/旧标注文件

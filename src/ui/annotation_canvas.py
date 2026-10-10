@@ -293,6 +293,30 @@ class AnnotationCanvas(QGraphicsView):
         self._scene.addItem(self._image_item)
         self.setSceneRect(self._image_item.boundingRect())
 
+    def clear_image(self):
+        """清空场景并把状态复位到"未加载图片"
+
+        仅调用 _scene.clear() 不够：_image_item 会残留指向已从场景移除的
+        图形项，导致 has_image 永远为真（关夹后再绘制标注就又崩一次）。
+        所有"不再显示图片"的路径都必须走这里，而不是直接清场景。
+        """
+        self._scene.clear()
+        self._crosshair_items = None
+        self._image_item = None
+        self._is_drawing = False
+        self._drawing_start = None
+        self._drawing_end = None
+        self._temp_rect_item = None
+
+    @property
+    def has_image(self) -> bool:
+        """当前是否已加载并显示图片
+
+        绘制类操作的唯一判据。不要再直接读 self._image_item——
+        它会随 _scene.clear() 残留而说谎。
+        """
+        return self._image_item is not None
+
     def draw_annotations(self, annotations: List[Annotation]):
         """清除并重新绘制所有标注"""
         for item in self._scene.items():
@@ -456,6 +480,16 @@ class AnnotationCanvas(QGraphicsView):
             return
 
         if event.button() == Qt.LeftButton:
+            # 未加载图片时不进入绘制：空场景的 mapToScene 依然返回合法坐标，
+            # 放行会让用户拖出矩形，最终在 main_window 侧因 current_image_path
+            # 为 None 而崩在 Path(None)。手势干脆不开始，同时给状态栏一句提示，
+            # 否则用户只看到"点了没反应"。
+            if not self.has_image:
+                from src.utils.i18n import tr
+                self.status_message.emit(tr("canvas_no_image_hint"))
+                event.accept()
+                return
+
             scene_pos = self.mapToScene(event.pos())
 
             clicked_items = self.items(event.pos())
@@ -530,7 +564,8 @@ class AnnotationCanvas(QGraphicsView):
                     abs(self._drawing_start.y() - self._drawing_end.y())
                 )
 
-                if rect.width() > 10 and rect.height() > 10:
+                if (rect.width() > 10 and rect.height() > 10
+                        and self.has_image):
                     annotation = Annotation(
                         rect.x(), rect.y(),
                         rect.width(), rect.height(),

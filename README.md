@@ -464,6 +464,7 @@ export QT_QPA_PLATFORM=offscreen
 python tools/verify_split.py         # Mixin 拆分保真（改 mixin 方法体后必跑）
 python tools/verify_flow_fixes.py    # 操作流程回归
 python tools/verify_decision_fixes.py
+python tools/verify_no_image_annotation.py   # 无图时标注操作的回归
 python tools/smoke_mainwindow.py
 ```
 详见 [tools/README.md](tools/README.md)。
@@ -471,7 +472,7 @@ python tools/smoke_mainwindow.py
 ## 常见问题
 
 ### Q: 无法加载图片
-A: 检查图片格式是否支持，文件路径是否包含中文或特殊字符
+A: 检查图片格式是否支持，文件路径是否包含中文或特殊字符。若图片文件损坏或解码失败，工具会弹窗提示并回退到"未加载图片"状态，不会残留异常状态。
 
 ### Q: 导出失败
 A: 检查输出目录权限，确保有写入权限
@@ -510,6 +511,14 @@ A: 通过菜单"语言 → 中文/英文"切换界面语言，切换会立即生
 - 发送邮件到 developer@example.com
 
 ## 更新日志
+
+### 未发布
+- **缺陷修复**：未加载图片时在画布上绘制标注不再崩溃（原 `Path(None)` TypeError）；手势在无图时直接不生效并给出状态栏提示
+- **缺陷修复**：关闭图片文件夹后画布状态正确复位；图片解码失败时回滚当前图片状态，不再留下"有当前图片但画布无图"的矛盾态
+- **健壮性**：`AnnotationManager` 的空路径契约明确化——读路径返回空结果，写路径抛 `ValueError` 而非 pathlib 的 `TypeError`
+- **国际化**：新增 `canvas_no_image_hint`、`annotation_ignored_no_image` 两条提示（中英双语）
+- **质量**：新增 11 个用例（共 230 个，覆盖率 83.16%），含 CI 可跑的静态守卫（钉住三层防御与翻译双侧完整性）
+- **开发工具**：新增 `tools/verify_no_image_annotation.py`（无图标注回归，含真实鼠标手势与英文界面校验）
 
 ### v2.4.0 (2026-09-24)
 - **质量基建**：196 个单元测试（覆盖率 83%）+ GitHub Actions CI（ruff + pytest，Python 3.10/3.12 × Linux/Windows）、pre-commit 钩子；测试套件首次真正入库

@@ -58,8 +58,9 @@ class ImageActionsMixin:
         self._last_folder_path = ""
         self.current_image_path = None
         self.current_image_index = 0
-        self.canvas._scene.clear()
-        self.canvas._crosshair_items = None
+        # 必须走 canvas.clear_image()：只清场景会残留 _image_item，
+        # 之后 canvas.has_image 仍为真 → 又能拖出标注 → 又崩
+        self.canvas.clear_image()
         self.update_image_list()
         self.update_stats()
         self.image_info_label.setText(tr("no_image_loaded"))
@@ -101,6 +102,16 @@ class ImageActionsMixin:
                 # 选中列表项
                 self.image_list_widget.setCurrentRow(index)
             else:
+                # 图片解码失败：撤销上面已提交的 current_image_path，并把画布
+                # 复位。否则"有当前图片"与"画布有图"两个判据互相矛盾，
+                # 后续标注操作会拿着这个路径继续走（写盘/读盘）。
+                self.current_image_path = None
+                self.current_image_index = 0
+                self.canvas.clear_image()
+                self.image_list_widget.setCurrentRow(-1)
+                self.image_info_label.setText(tr("no_image_loaded"))
+                self.status_image_info.setText("")
+                self.status_annotation_info.setText("")
                 QMessageBox.warning(self, tr("error"), f"{tr('cannot_load_image')}{image_path}")
 
     def update_image_list(self):
@@ -308,8 +319,7 @@ class ImageActionsMixin:
         if total == 0:
             self.current_image_path = None
             self.current_image_index = 0
-            self.canvas._scene.clear()
-            self.canvas._crosshair_items = None
+            self.canvas.clear_image()
             self.image_info_label.setText(tr("no_image_loaded"))
             self.status_image_info.setText("")
             self.status_annotation_info.setText("")

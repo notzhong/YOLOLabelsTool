@@ -449,6 +449,7 @@ export QT_QPA_PLATFORM=offscreen
 python tools/verify_split.py         # Mixin split fidelity (run after touching mixin methods)
 python tools/verify_flow_fixes.py    # operation-flow regression
 python tools/verify_decision_fixes.py
+python tools/verify_no_image_annotation.py   # annotating with no image loaded
 python tools/smoke_mainwindow.py
 ```
 See [tools/README.md](tools/README.md).
@@ -456,7 +457,7 @@ See [tools/README.md](tools/README.md).
 ## FAQ
 
 **Q: Images fail to load**
-A: Check the format is supported and the path has no unusual/special characters.
+A: Check the format is supported and the path has no unusual/special characters. If the file is corrupt or fails to decode, the tool shows a warning and falls back to the "no image loaded" state rather than leaving an inconsistent one behind.
 
 **Q: Export fails**
 A: Check write permissions on the output directory.
@@ -495,6 +496,14 @@ Questions or suggestions:
 - Email developer@example.com
 
 ## Changelog
+
+### Unreleased
+- **Fix**: annotating on the canvas with no image loaded no longer crashes (previously `Path(None)` TypeError); the gesture is inert with no image and the status bar explains why
+- **Fix**: canvas state resets correctly after closing an image folder; a failed image decode rolls back the current-image state instead of leaving a contradictory "current image set but nothing shown"
+- **Robustness**: explicit empty-path contract for `AnnotationManager` — reads return empty results, writes raise `ValueError` rather than pathlib's `TypeError`
+- **i18n**: two new status hints, `canvas_no_image_hint` and `annotation_ignored_no_image` (Chinese + English)
+- **Quality**: 11 new tests (230 total, 83.16% coverage), including CI-runnable static guards pinning the three-layer defense and two-sided translation completeness
+- **Dev tooling**: new `tools/verify_no_image_annotation.py` (no-image annotation regression, with real mouse gestures and an English-locale check)
 
 ### v2.4.0 (2026-09-24)
 - **Quality infrastructure**: 196 unit tests (83% coverage) + GitHub Actions CI (ruff + pytest, Python 3.10/3.12 × Linux/Windows) and pre-commit hooks; the test suite is finally version-controlled

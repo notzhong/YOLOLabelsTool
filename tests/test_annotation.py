@@ -149,6 +149,68 @@ class TestCommandUndoRedo:
         assert annotation_manager.can_redo() is False
 
 
+# ==================== 未加载图片时的防御 ====================
+#
+# 回归：未加载任何图片就标注 → AddAnnotationCommand.execute 拿 None 当
+# image_path 查标注 → 一路炸到 Path(None) 的 TypeError（traceback 里全是
+# pathlib 内部细节，看不出真正原因是"没加载图片"）。约定：
+#   读路径（get/has/load）容忍空路径，返回空结果，不抛异常；
+#   写路径（save/clear）与 get_annotation_path 快速失败，抛 ValueError。
+
+class TestNoImageLoadedDefense:
+    """image_path 为 None/空串（未加载图片）时的行为契约"""
+
+    def test_get_annotation_path_rejects_empty(self, annotation_manager):
+        with pytest.raises(ValueError, match="image_path 不能为空"):
+            annotation_manager.get_annotation_path(None)
+
+    def test_get_annotation_path_rejects_empty_string(self, annotation_manager):
+        with pytest.raises(ValueError, match="image_path 不能为空"):
+            annotation_manager.get_annotation_path("")
+
+    def test_legacy_annotation_path_rejects_empty(self, annotation_manager):
+        with pytest.raises(ValueError, match="image_path 不能为空"):
+            annotation_manager._legacy_annotation_path(None)
+
+    def test_get_annotations_returns_empty_for_none(self, annotation_manager):
+        assert annotation_manager.get_annotations(None) == []
+
+    def test_load_annotations_returns_empty_for_none(self, annotation_manager):
+        assert annotation_manager.load_annotations(None) == []
+
+    def test_has_annotations_false_for_none(self, annotation_manager):
+        assert annotation_manager.has_annotations(None) is False
+
+    def test_save_annotations_raises_for_none(self, annotation_manager):
+        with pytest.raises(ValueError, match="拒绝保存标注"):
+            annotation_manager.save_annotations(None, [Annotation(0, 0, 10, 10, 0)])
+
+    def test_clear_annotations_raises_for_none(self, annotation_manager):
+        with pytest.raises(ValueError, match="拒绝清除标注"):
+            annotation_manager.clear_annotations(None)
+
+    def test_add_command_with_none_path_raises_valueerror_not_typeerror(
+        self, annotation_manager
+    ):
+        """原始崩溃路径：命令执行必须抛 ValueError，而不是 pathlib 的 TypeError"""
+        cmd = AddAnnotationCommand(annotation_manager, None, Annotation(0, 0, 10, 10, 0))
+        with pytest.raises(ValueError):
+            annotation_manager.execute_command(cmd)
+
+    def test_failed_add_command_leaves_no_undo_entry(self, annotation_manager):
+        """执行失败的命令不得进撤销栈，否则 Ctrl+Z 会重放到无效命令"""
+        cmd = AddAnnotationCommand(annotation_manager, None, Annotation(0, 0, 10, 10, 0))
+        with pytest.raises(ValueError):
+            annotation_manager.execute_command(cmd)
+        assert annotation_manager.can_undo() is False
+
+    def test_none_path_does_not_pollute_cache_or_statistics(self, annotation_manager):
+        """空路径不得写入 _annotations，否则统计会把 None 当成一张图"""
+        annotation_manager.get_annotations(None)
+        assert None not in annotation_manager._annotations
+        assert annotation_manager.get_statistics()["total_images"] == 0
+
+
 # ==================== AnnotationManager 持久化 ====================
 
 class TestAnnotationManagerPersistence:

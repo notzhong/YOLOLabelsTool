@@ -23,13 +23,22 @@ export QT_QPA_PLATFORM=offscreen   # 无头模式
 | `smoke_dialogs.py` | TrainDialog / ValidationDialog offscreen 实例化 + 关键路径 | 45 个配置键往返、恢复/增量互斥、DPI 坐标换算、Unicode 绘制 |
 | `smoke_mainwindow.py` | MainWindow 实例化 + `update_ui_texts` 全链路 | 5 个 Mixin 装配、文案刷新链 |
 | `smoke_export_deps.py` | 导出依赖"询问后安装" 7 条路径 | 真实检测 / 拒绝中止 / 同意触发 / 冻结复制命令（剪贴板断言）/ InstallWorker 成功与失败（真实 pip 子进程） |
+| `verify_no_image_annotation.py` | 未加载图片即标注的回归：A 冷启动空画布真实派发鼠标按下/移动/松开；B 加载后关夹再拖拽（专测 `_image_item` 残留）；C 无图直调 `add_annotation_with_command` + 图片解码失败回滚 | 三条路径都不抛异常且不产生标注；正常图片拖拽仍可用（守卫未误伤）；关夹后 `canvas.has_image` 为 False |
 
 ```bash
 python tools/verify_split.py
 python tools/verify_flow_fixes.py
 python tools/verify_decision_fixes.py
+python tools/verify_no_image_annotation.py
 python tools/smoke_mainwindow.py
 ```
+
+> `verify_no_image_annotation.py` 自带隔离：用 `tempfile.mkdtemp()` 建图片与标注目录，
+> 把 `config_file_path` 指到临时文件，并把 `QMessageBox.*` 换成记账空实现（offscreen 下
+> 模态框无人点击会挂死）。不要改回固定路径 `/tmp/xxx`，也不要省掉 config 重定向：
+> 标注目录锚定应用根，残留的标注文件会在下次运行时被重新加载，旧标注落在光标下，
+> 导致"正常拖拽"断言假失败；而关夹/切图会 `save_settings()` 回写语言与主题，
+> 直接跑会改掉你本机 `config/config.ini`。
 
 ## 维护约定
 
@@ -38,7 +47,7 @@ python tools/smoke_mainwindow.py
   "机械搬迁导致相对导入断链"类回归的机制；
 - `verify_split.py` 依赖完整 git 历史（基线 ref `f3d4a66^`、`ffcc902`），浅克隆会给出提示；
 - 这些是 UI 层脚本，**不进 CI**（`.github/workflows/ci.yml` 不安装 PySide6）；CI 只跑
-  `tests/`（core/utils，196 个用例）；
+  `tests/`（core/utils，223 个用例）；
 - 修复"用户操作流程"缺陷时，优先把复现逻辑固化为 `verify_*.py` 断言，或下沉为
   `tests/` 下的纯逻辑用例。
 

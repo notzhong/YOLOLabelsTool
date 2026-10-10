@@ -112,6 +112,9 @@ class PanelsMixin:
         self.canvas.annotation_created.connect(self._on_canvas_annotation_created)
         self.canvas.annotation_changed.connect(self.save_annotations)
         self.canvas.annotation_deleted.connect(self._on_canvas_annotation_deleted)
+        # 画布的状态提示（如"未加载图片"）转发到主窗口状态栏。
+        # status_message 信号此前定义了但从未连接，画布侧发什么都无人接收。
+        self.canvas.status_message.connect(self.update_status)
 
         layout.addWidget(self.canvas)
         

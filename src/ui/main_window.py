@@ -726,7 +726,19 @@ class MainWindow(
     # ==================== Canvas 信号处理 ====================
 
     def add_annotation_with_command(self, annotation):
-        """通过命令模式添加标注（支持撤销）"""
+        """通过命令模式添加标注（支持撤销）
+
+        未加载图片时直接返回：AddAnnotationCommand.execute 会拿
+        self.image_path 去查标注，None 会一路炸到 Path(None)。
+        此方法也被 tools/verify_*.py 直接调用（绕过画布信号），
+        所以守卫放这里而不是只放在 _on_canvas_annotation_created。
+        """
+        if not self.current_image_path:
+            self.logger.warning(
+                "忽略标注创建请求：当前未加载图片（current_image_path 为 None）"
+            )
+            self.update_status(tr("annotation_ignored_no_image"))
+            return
         from src.core.annotation import AddAnnotationCommand
         command = AddAnnotationCommand(
             self.annotation_manager,
@@ -740,6 +752,8 @@ class MainWindow(
 
     def _on_canvas_annotation_created(self, annotation):
         """用户通过画布绘制了一个新标注"""
+        if not self.current_image_path:
+            return
         self.add_annotation_with_command(annotation)
         class_name = self.class_manager.get_class_name(self.selected_class_id)
         self.update_status(tr("annotation_created").replace("{class_name}", class_name))
