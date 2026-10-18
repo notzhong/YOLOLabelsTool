@@ -2,13 +2,14 @@
 主窗口实现
 """
 
+import copy
 import json
 import configparser
 from pathlib import Path
 from typing import List, Optional
 
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QHBoxLayout,
+    QMainWindow, QWidget, QHBoxLayout, QComboBox,
     QSplitter, QLabel, QFileDialog, QMessageBox, QStatusBar
 )
 from PySide6.QtCore import (
@@ -33,6 +34,7 @@ from src.ui.main_window_mixins import (
     ImageActionsMixin,
     ModelActionsMixin,
     PanelsMixin,
+    SegmentationMixin,
     ThemeLanguageMixin,
 )
 
@@ -43,6 +45,7 @@ class MainWindow(
     ImageActionsMixin,
     ClassActionsMixin,
     ModelActionsMixin,
+    SegmentationMixin,
     QMainWindow,
 ):
     """主窗口类"""
@@ -71,6 +74,10 @@ class MainWindow(
         self.current_image_path: Optional[str] = None
         self.current_image_index: int = 0
         self.selected_class_id: int = 0
+        # 任务模式：detect（矩形）/ segment（多边形），由 load_settings 从配置覆盖
+        self.task_mode: str = "detect"
+        # 多边形编辑手势的撤销快照（edit_gesture_started 时捕获）
+        self._pending_edit_state = None
         # 统计缓存移至 StatsPanel._stats_counts
         self._last_browse_path = str(Path.cwd())  # 上次浏览路径
         self._last_folder_path = ""  # 上次打开的图片文件夹
@@ -90,7 +97,10 @@ class MainWindow(
         self.action_eyecare_theme.setChecked(self.current_theme == "eyecare")
         self.init_toolbar()
         self.init_statusbar()
-        
+
+        # 同步任务模式到画布与工具栏（配置在 init_toolbar 之前已加载）
+        self._apply_task_mode(self.task_mode, persist=False)
+
         # 更新类别列表
         self.update_class_list()
 
@@ -313,7 +323,36 @@ class MainWindow(
         self.annotate_menu = menubar.addMenu(tr("annotate"))
         self.annotate_menu.addAction(self.action_auto_annotate)
         self.annotate_menu.addAction(self.action_batch_auto_annotate)
-        
+
+        # 分割标注菜单
+        self.segmentation_menu = menubar.addMenu(tr("segmentation_menu"))
+
+        self.action_import_annotation = QAction(tr("import_annotation_current"), self)
+        self.action_import_annotation.triggered.connect(self.import_segmentation_current)
+        self.segmentation_menu.addAction(self.action_import_annotation)
+
+        self.action_import_annotation_batch = QAction(tr("import_annotation_batch"), self)
+        self.action_import_annotation_batch.triggered.connect(self.import_segmentation_batch)
+        self.segmentation_menu.addAction(self.action_import_annotation_batch)
+
+        self.segmentation_menu.addSeparator()
+
+        self.action_convert_current_to_segment = QAction(tr("convert_current_to_segment"), self)
+        self.action_convert_current_to_segment.triggered.connect(self.convert_current_to_segment)
+        self.segmentation_menu.addAction(self.action_convert_current_to_segment)
+
+        self.action_convert_current_to_detect = QAction(tr("convert_current_to_detect"), self)
+        self.action_convert_current_to_detect.triggered.connect(self.convert_current_to_detect)
+        self.segmentation_menu.addAction(self.action_convert_current_to_detect)
+
+        self.action_convert_folder_to_segment = QAction(tr("convert_folder_to_segment"), self)
+        self.action_convert_folder_to_segment.triggered.connect(self.convert_folder_to_segment)
+        self.segmentation_menu.addAction(self.action_convert_folder_to_segment)
+
+        self.action_convert_folder_to_detect = QAction(tr("convert_folder_to_detect"), self)
+        self.action_convert_folder_to_detect.triggered.connect(self.convert_folder_to_detect)
+        self.segmentation_menu.addAction(self.action_convert_folder_to_detect)
+
         # 语言菜单
         self.language_menu = menubar.addMenu(tr("language"))
         
@@ -340,6 +379,17 @@ class MainWindow(
         self.toolbar.addSeparator()
         self.toolbar.addAction(self.action_auto_annotate)
         self.toolbar.addAction(self.action_fit)
+        self.toolbar.addSeparator()
+
+        # 全局任务模式：检测（矩形）/ 分割（多边形）
+        self.task_mode_label = QLabel(tr("task_mode_label"))
+        self.toolbar.addWidget(self.task_mode_label)
+
+        self.task_mode_combo = QComboBox()
+        self.task_mode_combo.addItem(tr("task_mode_detect"), "detect")
+        self.task_mode_combo.addItem(tr("task_mode_segment"), "segment")
+        self.task_mode_combo.currentIndexChanged.connect(self._on_task_mode_changed)
+        self.toolbar.addWidget(self.task_mode_combo)
     
     def init_statusbar(self):
         """初始化状态栏"""
@@ -408,6 +458,13 @@ class MainWindow(
                     translation_manager.current_language = saved_language
                     translation_manager.load_translation_files()
                     self.logger.info(f"加载保存的语言: {saved_language}")
+
+            # 加载任务模式（detect/segment）
+            if self.config.has_option('preferences', 'task_mode'):
+                saved_task_mode = self.config.get('preferences', 'task_mode')
+                if saved_task_mode in ['detect', 'segment']:
+                    self.task_mode = saved_task_mode
+                    self.logger.info(f"加载保存的任务模式: {saved_task_mode}")
         
         # 加载最近文件夹
         if self.config.has_option("preferences", "last_folder"):
@@ -462,6 +519,9 @@ class MainWindow(
             translation_manager = TranslationManager.instance()
             self.config.set('preferences', 'language', translation_manager.get_current_language())
 
+            # 保存任务模式
+            self.config.set('preferences', 'task_mode', self.task_mode)
+
             # 保存最近文件夹
             self.config.set('preferences', 'last_folder', self._last_folder_path)
             
@@ -493,6 +553,7 @@ class MainWindow(
         self.config.set('preferences', 'recent_folder', '')
         self.config.set('preferences', 'default_export_path', '')
         self.config.set('preferences', 'auto_save', 'false')
+        self.config.set('preferences', 'task_mode', 'detect')
         
         # 保存配置文件
         with open(self.config_file_path, 'w', encoding='utf-8') as configfile:
@@ -635,6 +696,10 @@ class MainWindow(
             if not yaml_filename.lower().endswith((".yaml", ".yml")):
                 yaml_filename += ".yaml"
 
+            # 导出前：存在与任务模式不匹配的标注时，列出数量并确认临时转换
+            if not self.confirm_export_conversion():
+                return
+
             try:
                 self.yolo_exporter.export(
                     self.image_manager,
@@ -642,6 +707,7 @@ class MainWindow(
                     self.class_manager,
                     output_dir,
                     yaml_filename=yaml_filename,
+                    task=self.task_mode,
                 )
                 QMessageBox.information(self, tr("success"), f"{tr('export_success')} {output_dir}")
             except Exception as e:
@@ -660,6 +726,11 @@ class MainWindow(
 
         if output_dir:
             self._last_browse_path = output_dir
+
+            # 导出前：存在与任务模式不匹配的标注时，列出数量并确认临时转换
+            if not self.confirm_export_conversion():
+                return
+
             try:
                 from src.utils.dataset_splitter import DatasetSplitter
                 
@@ -669,6 +740,7 @@ class MainWindow(
                     self.annotation_manager,
                     output_dir,
                     class_manager=self.class_manager,
+                    task=self.task_mode,
                 )
                 QMessageBox.information(self, tr("success"), f"{tr('dataset_split_export_success')} {output_dir}")
             except Exception as e:
@@ -679,7 +751,13 @@ class MainWindow(
     # ==================== 撤销/重做方法 ====================
     
     def undo(self):
-        """撤销"""
+        """撤销（绘制中的多边形：先回退最后一个顶点）"""
+        # Ctrl+Z 绑定在窗口级 QAction 上，按键事件先于画布到达这里；
+        # 正在绘制多边形时应把"撤销"解释为回退顶点，而不是撤销上一条命令。
+        if self.canvas.is_polygon_drawing():
+            self.canvas.polygon_undo_last_point()
+            return
+
         if self.annotation_manager.can_undo():
             success = self.annotation_manager.undo()
             if success:
@@ -694,6 +772,10 @@ class MainWindow(
     
     def redo(self):
         """重做"""
+        # 绘制中的多边形不接受重做：重做会重载标注、打断绘制
+        if self.canvas.is_polygon_drawing():
+            return
+
         if self.annotation_manager.can_redo():
             success = self.annotation_manager.redo()
             if success:
@@ -786,6 +868,45 @@ class MainWindow(
         self.update_image_list()
         self.update_status(tr("annotation_deleted"))
         self.update_undo_redo_actions()
+
+    def _on_canvas_edit_started(self):
+        """多边形编辑手势开始：快照当前标注（供撤销使用）
+
+        画布图形项与管理器缓存共享同一批标注对象，手势开始时的深拷贝
+        即修改前的完整状态。
+        """
+        if not self.current_image_path:
+            self._pending_edit_state = None
+            return
+        self._pending_edit_state = copy.deepcopy(
+            self.annotation_manager.get_annotations(self.current_image_path)
+        )
+
+    def _on_canvas_edit_finished(self):
+        """多边形编辑手势结束：生成可撤销的编辑命令（每次手势一步撤销）"""
+        old_state = self._pending_edit_state
+        self._pending_edit_state = None
+        if old_state is None or not self.current_image_path:
+            return
+
+        new_state = copy.deepcopy(
+            self.annotation_manager.get_annotations(self.current_image_path)
+        )
+        if old_state == new_state:
+            return  # 无实质变化（如仅点选/拖动 0 像素）不产生撤销步骤
+
+        from src.core.annotation import EditAnnotationsCommand
+        command = EditAnnotationsCommand(
+            self.annotation_manager, self.current_image_path, old_state, new_state
+        )
+        # 以画布上的活动对象写缓存：保持画布与缓存的对象一致性
+        # （删除/改类等后续操作依赖 identity 定位），命令内的快照仅用于撤销/重做。
+        self.annotation_manager.save_annotations(
+            self.current_image_path, self.canvas.get_annotation_items()
+        )
+        self.annotation_manager.push_command(command)
+        self.update_undo_redo_actions()
+        self.update_status(tr("annotation_updated"))
 
     # ==================== 面板信号处理 ====================
 

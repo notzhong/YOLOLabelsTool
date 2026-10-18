@@ -175,6 +175,14 @@ class ThemeLanguageMixin:
         self.action_auto_annotate.setText(tr("auto_annotate"))
         self.action_batch_auto_annotate.setText(tr("batch_auto_annotate"))
 
+        self.segmentation_menu.setTitle(tr("segmentation_menu"))
+        self.action_import_annotation.setText(tr("import_annotation_current"))
+        self.action_import_annotation_batch.setText(tr("import_annotation_batch"))
+        self.action_convert_current_to_segment.setText(tr("convert_current_to_segment"))
+        self.action_convert_current_to_detect.setText(tr("convert_current_to_detect"))
+        self.action_convert_folder_to_segment.setText(tr("convert_folder_to_segment"))
+        self.action_convert_folder_to_detect.setText(tr("convert_folder_to_detect"))
+
         self.action_load_yaml.setText(tr("load_yaml"))
         self.action_save_yaml.setText(tr("save_yaml"))
 
@@ -222,6 +230,13 @@ class ThemeLanguageMixin:
         self.class_group.setTitle(tr("annotation_classes"))
         self.annotation_group.setTitle(tr("annotation_operations"))
         self.export_group.setTitle(tr("data_export"))
+
+        # 任务模式下拉框（存在时）
+        if hasattr(self, 'task_mode_label') and self.task_mode_label is not None:
+            self.task_mode_label.setText(tr("task_mode_label"))
+        if hasattr(self, 'task_mode_combo') and self.task_mode_combo is not None:
+            self.task_mode_combo.setItemText(0, tr("task_mode_detect"))
+            self.task_mode_combo.setItemText(1, tr("task_mode_segment"))
 
         self.stats_panel.update_language()
         self.model_info_panel.update_language(self.model_manager)

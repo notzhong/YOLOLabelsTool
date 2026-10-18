@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 import src.core.model_manager as mm_module
+from src.core.annotation import Annotation, PolygonAnnotation
 from src.core.model_manager import ModelManager
 
 
@@ -22,10 +23,17 @@ class FakeBox:
         self.cls = [_T(cls_id)]
 
 
+class FakeMasks:
+    """模拟 ultralytics 的 masks 对象：xyn 为归一化多边形列表"""
+    def __init__(self, xyn):
+        self.xyn = xyn
+
+
 class FakeResult:
-    def __init__(self, boxes, orig_shape=(480, 640)):
+    def __init__(self, boxes, orig_shape=(480, 640), masks=None):
         self.boxes = boxes
         self.orig_shape = orig_shape
+        self.masks = masks
 
 
 class FakeYOLOModel:
@@ -42,9 +50,16 @@ class FakeYOLOModel:
 
 class FakeYOLOCtor:
     """替代 ultralytics.YOLO 构造器"""
+    task = None
+
     def __init__(self, path):
         self.path = path
         self.names = {0: "person", 1: "car"}
+
+
+class FakeSegmentYOLOCtor(FakeYOLOCtor):
+    """模拟分割模型构造器（ultralytics 加载后模型带 task='segment'）"""
+    task = "segment"
 
 
 @pytest.fixture
@@ -175,7 +190,7 @@ class TestPredict:
 class TestModelInfoAndLifecycle:
     def test_model_info_not_loaded(self, mm):
         info = mm.get_model_info()
-        assert info == {"loaded": False, "path": None, "class_count": 0}
+        assert info == {"loaded": False, "path": None, "class_count": 0, "task": None}
 
     def test_model_info_loaded(self, mm):
         mm.model_loaded = True
@@ -216,3 +231,116 @@ class TestConvertToAnnotations:
 
     def test_empty_detections(self, mm):
         assert mm.convert_to_annotations([]) == []
+
+
+class TestModelTaskLifecycle:
+    def test_load_records_model_task(self, mm, monkeypatch, tmp_path):
+        monkeypatch.setattr(mm_module, "YOLO", FakeSegmentYOLOCtor)
+        monkeypatch.setattr(mm_module, "YOLO_AVAILABLE", True)
+        model_file = tmp_path / "seg.pt"
+        model_file.write_text("fake")
+
+        assert mm.load_model(str(model_file)) is True
+        assert mm.model_task == "segment"
+        assert mm.get_model_info()["task"] == "segment"
+
+    def test_load_detect_model_task_is_none_for_plain_ctor(self, mm, monkeypatch, tmp_path):
+        monkeypatch.setattr(mm_module, "YOLO", FakeYOLOCtor)
+        monkeypatch.setattr(mm_module, "YOLO_AVAILABLE", True)
+        model_file = tmp_path / "det.pt"
+        model_file.write_text("fake")
+
+        assert mm.load_model(str(model_file)) is True
+        assert mm.model_task is None
+
+    def test_unload_resets_model_task(self, mm):
+        mm.model = FakeYOLOModel()
+        mm.model_loaded = True
+        mm.model_task = "segment"
+
+        mm.unload_model()
+        assert mm.model_task is None
+
+
+class TestMaskPolygons:
+    def test_extract_scales_to_pixels(self, mm):
+        masks = FakeMasks([[[0.1, 0.5], [0.6, 0.5], [0.6, 0.75]]])
+        polys = mm._extract_mask_polygons(FakeResult([], masks=masks), 100, 200)
+        assert polys[0][0] == pytest.approx((10.0, 100.0))
+        assert polys[0][2] == pytest.approx((60.0, 150.0))
+
+    def test_extract_clips_out_of_range(self, mm):
+        masks = FakeMasks([[[0.5, 0.5], [1.5, 0.5], [1.0, 1.25]]])
+        polys = mm._extract_mask_polygons(FakeResult([], masks=masks), 100, 200)
+        assert polys[0][1] == pytest.approx((100.0, 100.0))
+        assert polys[0][2] == pytest.approx((100.0, 200.0))
+
+    def test_no_masks_returns_none(self, mm):
+        assert mm._extract_mask_polygons(FakeResult([]), 100, 100) is None
+
+    def test_degenerate_mask_becomes_none_entry(self, mm):
+        masks = FakeMasks([[[0.1, 0.1], [0.2, 0.2]]])  # 2 顶点，不足 3
+        assert mm._extract_mask_polygons(FakeResult([], masks=masks), 100, 100) == [None]
+
+    def test_process_boxes_attaches_polygon(self, mm):
+        dets = mm._process_boxes(
+            [FakeBox(10, 20, 110, 220, 0.9, 0)],
+            640,
+            480,
+            [[(1.0, 2.0), (3.0, 4.0), (5.0, 6.0)]],
+        )
+        assert dets[0]["polygon_px"] == [(1.0, 2.0), (3.0, 4.0), (5.0, 6.0)]
+
+    def test_process_boxes_without_masks_unaffected(self, mm):
+        dets = mm._process_boxes([FakeBox(10, 20, 110, 220, 0.9, 0)], 640, 480)
+        assert "polygon_px" not in dets[0]
+
+
+class TestPredictWithMasks:
+    def test_predict_attaches_polygon_px(self, mm, real_image_factory):
+        img = real_image_factory("seg_predict.png")
+        masks = FakeMasks([[[0.1, 0.5], [0.6, 0.5], [0.6, 0.75]]])
+        mm.model = FakeYOLOModel(
+            results=[FakeResult([FakeBox(10, 100, 60, 150, 0.9, 0)], orig_shape=(200, 100), masks=masks)]
+        )
+        mm.model_loaded = True
+
+        dets = mm.predict(img)
+        assert len(dets) == 1
+        assert dets[0]["polygon_px"][0] == pytest.approx((10.0, 100.0))
+
+
+class TestConvertToAnnotationsTasks:
+    def test_segment_task_uses_polygon_px(self, mm):
+        detections = [{
+            "x": 1, "y": 2, "width": 3, "height": 4, "class_id": 2,
+            "polygon_px": [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)],
+        }]
+        anns = mm.convert_to_annotations(detections, task="segment")
+        assert len(anns) == 1
+        assert isinstance(anns[0], PolygonAnnotation)
+        assert anns[0].class_id == 2
+        assert anns[0].points == [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)]
+
+    def test_segment_task_without_polygon_uses_rect_placeholder(self, mm):
+        detections = [{"x": 1, "y": 2, "width": 3, "height": 4, "class_id": 2}]
+        anns = mm.convert_to_annotations(detections, task="segment")
+        assert isinstance(anns[0], PolygonAnnotation)
+        assert anns[0].points == [(1, 2), (4, 2), (4, 6), (1, 6)]
+
+    def test_detect_task_with_polygon_uses_bbox(self, mm):
+        detections = [{
+            "x": 0, "y": 0, "width": 0, "height": 0, "class_id": 1,
+            "polygon_px": [(2.0, 3.0), (12.0, 3.0), (12.0, 33.0)],
+        }]
+        anns = mm.convert_to_annotations(detections)
+        assert isinstance(anns[0], Annotation)
+        assert (anns[0].x, anns[0].y, anns[0].width, anns[0].height) == (2.0, 3.0, 10.0, 30.0)
+
+    def test_detect_task_default_unchanged(self, mm):
+        detections = [
+            {"x": 1.0, "y": 2.0, "width": 3.0, "height": 4.0, "class_id": 2, "confidence": 0.5},
+        ]
+        anns = mm.convert_to_annotations(detections)
+        assert isinstance(anns[0], Annotation)
+        assert (anns[0].x, anns[0].y, anns[0].width, anns[0].height) == (1.0, 2.0, 3.0, 4.0)

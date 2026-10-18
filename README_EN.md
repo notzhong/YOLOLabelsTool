@@ -8,9 +8,12 @@ A PySide6-based YOLO annotation and training tool with manual annotation, model-
 
 ### 🎯 Core
 - **Image management**: load/close folders, auto-restore last folder, image preview, image switching
-- **Annotation drawing**: draw/edit/delete rectangular bounding boxes
+- **Task mode**: global toolbar switch between Detect (boxes) and Segment (polygons), persisted in config
+- **Annotation drawing**: draw rectangular (detect) and polygon (segment) annotations; polygons support vertex dragging, body translation, double-click edge vertex insert, right-click vertex delete
+- **Label import**: import existing YOLO labels (.txt) — for the current image or batch-matched by filename across a folder; mixed boxes/polygons supported, invalid lines skipped
+- **Annotation conversion**: one-click box ↔ polygon conversion (current image undoable; whole folder batch after confirmation)
 - **Class management**: add/edit/delete classes, clear all classes, custom class colors, 16-color palette auto-assignment, double-click/right-click quick rename
-- **Data export**: one-step export of YOLO-format datasets (data.yaml + labels folders) with custom yaml filename
+- **Data export**: one-step export of YOLO-format datasets (data.yaml + labels folders) for detect/segment (YOLO-seg) tasks with custom yaml filename
 - **Auto-save on switch**: annotations are saved automatically when switching images
 - **Keyboard shortcuts**: ←/→ to switch images, Tab/Shift+Tab to cycle classes
 
@@ -132,9 +135,12 @@ python main.py
 - Supported formats: jpg, jpeg, png, bmp, tiff, tif, gif
 
 ### 3. Annotate
-1. **Pick a class** in the right panel
-2. **Draw a box**: hold the left mouse button and drag on the image
-3. **Edit annotations**: adjust or delete drawn boxes
+1. **Pick a task mode**: toolbar "Task mode" dropdown — Detect (box) or Segment (polygon)
+2. **Pick a class** in the right panel
+3. **Draw annotations**:
+   - Detect mode: hold the left mouse button and drag to draw a box
+   - Segment mode: click to add polygon vertices, then double-click / click the first vertex / press Enter to close (Esc cancels, Backspace removes the last vertex)
+4. **Edit annotations**: adjust/delete boxes in detect mode; drag vertices, translate the polygon, double-click an edge to insert a vertex, right-click a vertex to delete it, Delete to remove the whole annotation in segment mode
 
 ### 4. Export data
 1. **Save annotations**: automatic — switching images saves current annotations
@@ -161,7 +167,7 @@ python main.py
 | Ctrl+O | Open folder |
 | Ctrl+S | Save annotations |
 | Ctrl+E | Export YOLO format |
-| Ctrl+Z | Undo |
+| Ctrl+Z | Undo (pops the last vertex while drawing a polygon) |
 | Ctrl+Y | Redo |
 | Delete | Delete selected annotation |
 | A / ← | Previous image |
@@ -174,6 +180,14 @@ python main.py
 | Ctrl+Shift+A | Batch auto-annotate |
 | Ctrl+M | Load model |
 | Ctrl+T | Train model |
+
+While drawing a polygon (segment mode):
+
+| Action | Function |
+|--------|----------|
+| Double-click / click first vertex / Enter | Close the polygon |
+| Backspace | Remove the last vertex |
+| Esc | Cancel the current drawing |
 
 ## Annotation Format
 
@@ -207,11 +221,21 @@ names: []  # class names (list when IDs are contiguous; dict otherwise)
 ```
 
 ### Label file format (.txt)
-One annotation per line:
+
+**Detect format (one box per line)**:
 ```
 <class_id> <x_center> <y_center> <width> <height>
 ```
+
+**Segment format (YOLO-seg, one polygon per line)**:
+```
+<class_id> <x1> <y1> <x2> <y2> ... <xn> <yn>
+```
+At least 3 vertices are required (polygons with fewer are skipped and logged).
+
 All coordinates are normalized to 0–1.
+
+Export follows the current task mode: detect outputs boxes, segment outputs polygons and writes `task: segment` into data.yaml (detect does not). If the data contains annotations that do not match the task mode (e.g. polygons while in detect mode), export first lists the count and asks to confirm a **temporary conversion** (export result only; stored data stays unchanged).
 
 Unlabeled images get empty `.txt` files so that images/ and labels/ stay one-to-one for YOLO training compatibility.
 
@@ -252,6 +276,25 @@ Model loading and inference are built on the [ultralytics](https://github.com/ul
 - Requires `ultralytics`: `pip install ultralytics`
 - First inference may take extra time to download weights
 - Batch annotation can be cancelled at any time
+- **Segmentation models**: when auto-annotating with a segmentation model (e.g. `yolov8n-seg.pt`), segment mode produces polygons (from `masks.xyn`) while detect mode reduces them to bounding boxes; if the model task and current mode differ, the status bar shows an adaptation hint
+
+## Segmentation Annotation (Polygon / YOLO-seg)
+
+### Overview
+The toolbar "Task mode" dropdown globally switches between Detect (boxes) and Segment (polygons); the choice is saved to config and restored on restart.
+
+### Drawing & editing
+- **Drawing** (segment mode): click to add vertices, double-click / click the first vertex / press Enter to close; Esc cancels, Backspace (or right-click while drawing) removes the last vertex; at least 3 vertices are required to close
+- **Editing**: click to select, then drag vertices, drag the body to translate, double-click an edge to insert a vertex, right-click a vertex to delete it; every edit gesture is undoable via Ctrl+Z (one step per gesture)
+
+### Label import (Segmentation menu)
+- **Import current image**: pick a .txt label file for the current image (overwrite confirmed, applied as one undoable step)
+- **Batch import**: pick a label folder; files are matched to loaded images by filename stem (overwrite confirmation + progress bar); boxes and polygons are parsed together, invalid lines are skipped and summarized
+- Parsing rules: 5 fields = box; `1 + 2k` (k ≥ 3) fields = k-vertex polygon; everything else is skipped
+
+### Annotation conversion (Segmentation menu)
+- **Current image**: boxes → 4-point polygons or polygons → bounding boxes, undoable in one step (Ctrl+Z restores)
+- **All images**: batch conversion after confirmation (progress bar), saved directly and not undoable
 
 ## Realtime Detection Verification
 
@@ -368,6 +411,8 @@ YOLOLabelsTool/
 ├── README.md               # docs (Chinese)
 ├── README_EN.md            # docs (English)
 ├── docs/                   # analysis reports
+│   ├── optimization-analysis-2026-09-24.md  # optimization analysis report
+│   └── segmentation-annotation-design.md    # segmentation annotation design (2.5.0)
 ├── tools/                  # dev verification scripts (see tools/README.md)
 │   ├── verify_split.py     # Mixin split fidelity (AST byte comparison + whitelist)
 │   ├── verify_*.py         # operation-flow / decision regression checks (offscreen)
@@ -379,14 +424,14 @@ YOLOLabelsTool/
 ├── src/
 │   ├── __init__.py         # version info
 │   ├── core/               # core modules
-│   │   ├── annotation.py   # annotation data + manager (undo/redo)
+│   │   ├── annotation.py   # annotation data + manager (boxes + polygons, undo/redo)
 │   │   ├── class_manager.py # class manager (YAML import/export/merge/stats)
 │   │   ├── image_manager.py # image manager (LRU cache, thumbnails, batch scaling)
-│   │   └── model_manager.py # YOLO model manager
+│   │   └── model_manager.py # YOLO model manager (detect/segment task recognition + result conversion)
 │   ├── ui/                 # user interface
-│   │   ├── annotation_canvas.py # annotation canvas (QGraphicsView)
+│   │   ├── annotation_canvas.py # annotation canvas (box/polygon drawing & editing)
 │   │   ├── main_window.py  # main window skeleton (menus, shortcuts, panel wiring)
-│   │   ├── main_window_mixins/ # main window responsibility mixins (theme/panels/images/classes/model)
+│   │   ├── main_window_mixins/ # main window responsibility mixins (theme/panels/images/classes/model/segmentation)
 │   │   ├── panels.py       # stats panel + model info panel
 │   │   ├── class_dialog.py # class edit dialog
 │   │   ├── region_selector.py # window highlighter + screen region selector
@@ -404,7 +449,7 @@ YOLOLabelsTool/
 │       ├── logger.py       # logging module
 │       ├── widget_helpers.py # slider/spinbox sync helpers
 │       ├── win32_helpers.py # Win32 API helpers
-│       └── yolo_exporter.py # YOLO format exporter
+│       └── yolo_exporter.py # YOLO format exporter (detect boxes / segment polygons)
 ├── yolo_tool/              # YOLO training module
 │   ├── __init__.py
 │   └── yolo_train.py       # YOLO trainer (async training)
@@ -450,6 +495,7 @@ python tools/verify_split.py         # Mixin split fidelity (run after touching 
 python tools/verify_flow_fixes.py    # operation-flow regression
 python tools/verify_decision_fixes.py
 python tools/verify_no_image_annotation.py   # annotating with no image loaded
+python tools/verify_polygon_flow.py  # segmentation flow (draw/edit/import/convert/export)
 python tools/smoke_mainwindow.py
 ```
 See [tools/README.md](tools/README.md).
@@ -497,12 +543,19 @@ Questions or suggestions:
 
 ## Changelog
 
-### Unreleased
+### v2.5.0 (2026-10-18)
+- **Segmentation annotation (new)**: a global toolbar "Task mode" switch Detect (boxes) / Segment (polygons), persisted to config; canvas supports vertex-by-vertex polygon drawing closed by double-click / first-vertex click / Enter (Esc cancels, Backspace removes the last vertex) plus vertex dragging, body translation, double-click edge vertex insert, right-click vertex delete; every edit gesture is one undo step
+- **Export (segment)**: export YOLO labels per task mode (polygons as normalized vertices, `task: segment` written into data.yaml); when annotations do not match the mode, export first lists the count and asks to confirm a temporary conversion (stored data unchanged)
+- **Label import (new)**: import existing YOLO labels — current image (one undoable step) and batch folder matching by filename (overwrite confirmation + progress, not undoable); boxes and polygons parsed together, invalid lines skipped and summarized
+- **Annotation conversion (new)**: box ↔ polygon via one click for the current image (undoable) or the whole folder as a batch (confirmed + progress, saved directly)
+- **Segmentation model assistance**: auto-annotating with a segmentation model produces polygons (from `masks.xyn`); if the model task and current mode differ, results auto-adapt (box → 4-point polygon / mask → bounding box) with a status-bar hint
+- **Quality**: new `tests/test_segmentation_guard.py` (62 static guard cases: canvas events / window wiring / mixin registration / two-sided i18n key parity) and `tools/verify_polygon_flow.py` (offscreen end-to-end check, scenarios A–L)
+- **Fix**: annotation text labels no longer swallow mouse clicks (click-through), fixing selection/dragging of annotations under a label
 - **Fix**: annotating on the canvas with no image loaded no longer crashes (previously `Path(None)` TypeError); the gesture is inert with no image and the status bar explains why
 - **Fix**: canvas state resets correctly after closing an image folder; a failed image decode rolls back the current-image state instead of leaving a contradictory "current image set but nothing shown"
 - **Robustness**: explicit empty-path contract for `AnnotationManager` — reads return empty results, writes raise `ValueError` rather than pathlib's `TypeError`
 - **i18n**: two new status hints, `canvas_no_image_hint` and `annotation_ignored_no_image` (Chinese + English)
-- **Quality**: 11 new tests (230 total, 83.16% coverage), including CI-runnable static guards pinning the three-layer defense and two-sided translation completeness
+- **Quality**: 11 new static guard tests for the no-image three-layer defense and two-sided translation completeness; v2.5.0 totals 334 tests at 84.34% coverage (CI gate 80%)
 - **Dev tooling**: new `tools/verify_no_image_annotation.py` (no-image annotation regression, with real mouse gestures and an English-locale check)
 
 ### v2.4.0 (2026-09-24)

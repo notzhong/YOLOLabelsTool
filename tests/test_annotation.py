@@ -12,6 +12,9 @@ from src.core.annotation import (
     AnnotationManager,
     Command,
     DeleteAnnotationCommand,
+    EditAnnotationsCommand,
+    PolygonAnnotation,
+    annotation_from_dict,
 )
 
 # ==================== Annotation 数据结构 ====================
@@ -19,7 +22,7 @@ from src.core.annotation import (
 class TestAnnotation:
     def test_to_dict_contains_all_fields(self, sample_annotation):
         d = sample_annotation.to_dict()
-        assert d == {"x": 10, "y": 20, "width": 100, "height": 200, "class_id": 0}
+        assert d == {"x": 10, "y": 20, "width": 100, "height": 200, "class_id": 0, "type": "box"}
 
     def test_from_dict_roundtrip(self, sample_annotation):
         restored = Annotation.from_dict(sample_annotation.to_dict())
@@ -350,4 +353,250 @@ class TestAnnotationManagerYoloIO:
         assert stats["total_images"] == 2
         assert stats["total_annotations"] == 4
         assert stats["class_counts"] == {0: 2, 1: 2}
+
+
+# ==================== PolygonAnnotation 数据结构 ====================
+
+class TestPolygonAnnotation:
+    def test_to_dict_format(self):
+        poly = PolygonAnnotation(points=[(1, 2), (3.5, 4), (5, 6)], class_id=2)
+        assert poly.to_dict() == {
+            "type": "polygon",
+            "points": [[1.0, 2.0], [3.5, 4.0], [5.0, 6.0]],
+            "class_id": 2,
+        }
+
+    def test_from_dict_roundtrip(self):
+        poly = PolygonAnnotation(points=[(1.5, 2.5), (3.0, 4.0), (5.0, 6.0)], class_id=1)
+        assert PolygonAnnotation.from_dict(poly.to_dict()) == poly
+
+    def test_from_dict_missing_points_defaults_empty(self):
+        poly = PolygonAnnotation.from_dict({})
+        assert poly.points == [] and poly.class_id == 0
+
+    def test_bounding_box(self):
+        poly = PolygonAnnotation(points=[(10, 20), (40, 20), (40, 70), (10, 70)], class_id=0)
+        assert poly.bounding_box() == (10, 20, 30, 50)
+
+    def test_bounding_box_empty(self):
+        assert PolygonAnnotation(points=[], class_id=0).bounding_box() == (0.0, 0.0, 0.0, 0.0)
+
+    def test_to_yolo_seg_format_exact_values(self):
+        poly = PolygonAnnotation(points=[(10, 20), (30, 20), (30, 60)], class_id=3)
+        data = poly.to_yolo_seg_format(100, 200)
+        assert data[0] == 3
+        assert data[1:] == pytest.approx([0.1, 0.1, 0.3, 0.1, 0.3, 0.3])
+
+    def test_from_yolo_seg_format_roundtrip(self):
+        poly = PolygonAnnotation(points=[(10.0, 20.0), (30.0, 20.0), (30.0, 60.0)], class_id=3)
+        yolo = poly.to_yolo_seg_format(100, 200)
+        restored = PolygonAnnotation.from_yolo_seg_format(yolo, 100, 200)
+        assert restored.class_id == 3
+        for (rx, ry), (ox, oy) in zip(restored.points, poly.points, strict=False):
+            assert (rx, ry) == pytest.approx((ox, oy))
+
+    def test_from_yolo_seg_format_truncates_class_id(self):
+        poly = PolygonAnnotation.from_yolo_seg_format(
+            [2.9, 0.1, 0.1, 0.3, 0.1, 0.3, 0.3], 100, 100
+        )
+        assert poly.class_id == 2
+
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            [0, 0.1, 0.1, 0.3, 0.1],  # 5 字段（框格式）
+            [0, 0.1, 0.1, 0.3, 0.1, 0.3, 0.3, 0.5],  # 偶数长度
+        ],
+    )
+    def test_from_yolo_seg_format_wrong_length_raises(self, bad):
+        with pytest.raises(ValueError, match=r"1\+2k"):
+            PolygonAnnotation.from_yolo_seg_format(bad, 100, 100)
+
+    def test_from_box_creates_rect_corners(self):
+        box = Annotation(x=10, y=20, width=30, height=40, class_id=1)
+        poly = PolygonAnnotation.from_box(box)
+        assert poly.points == [(10, 20), (40, 20), (40, 60), (10, 60)]
+        assert poly.class_id == 1
+
+    def test_annotation_from_polygon_bbox(self):
+        poly = PolygonAnnotation(points=[(10, 20), (40, 20), (40, 70), (10, 70)], class_id=2)
+        box = Annotation.from_polygon(poly)
+        assert (box.x, box.y, box.width, box.height, box.class_id) == (10, 20, 30, 50, 2)
+
+
+class TestAnnotationFromDict:
+    def test_polygon_dispatched(self):
+        ann = annotation_from_dict(
+            {"type": "polygon", "points": [[1, 2], [3, 4], [5, 6]], "class_id": 1}
+        )
+        assert isinstance(ann, PolygonAnnotation)
+        assert ann.class_id == 1
+
+    def test_legacy_file_without_type_is_box(self):
+        ann = annotation_from_dict({"x": 1, "y": 2, "width": 3, "height": 4, "class_id": 0})
+        assert isinstance(ann, Annotation)
+
+    def test_explicit_box_type(self):
+        ann = annotation_from_dict(
+            {"type": "box", "x": 1, "y": 2, "width": 3, "height": 4, "class_id": 0}
+        )
+        assert isinstance(ann, Annotation)
+
+
+class TestEditAnnotationsCommand:
+    def test_execute_undo_redo(self, annotation_manager):
+        old = [Annotation(0, 0, 10, 10, 0)]
+        new = [
+            Annotation(5, 5, 10, 10, 0),
+            PolygonAnnotation(points=[(1, 1), (2, 1), (2, 2)], class_id=1),
+        ]
+        annotation_manager.save_annotations("img.png", list(old))
+        cmd = EditAnnotationsCommand(annotation_manager, "img.png", old, new)
+        annotation_manager.execute_command(cmd)
+        assert [a.to_dict() for a in annotation_manager.get_annotations("img.png")] == [
+            a.to_dict() for a in new
+        ]
+
+        assert annotation_manager.undo() is True
+        assert [a.to_dict() for a in annotation_manager.get_annotations("img.png")] == [
+            a.to_dict() for a in old
+        ]
+
+        assert annotation_manager.redo() is True
+        assert [a.to_dict() for a in annotation_manager.get_annotations("img.png")] == [
+            a.to_dict() for a in new
+        ]
+
+    def test_snapshots_isolated_from_later_mutations(self, annotation_manager):
+        old = [PolygonAnnotation(points=[(0, 0), (10, 0), (10, 10)], class_id=0)]
+        new = [PolygonAnnotation(points=[(0, 0), (20, 0), (20, 20)], class_id=0)]
+        cmd = EditAnnotationsCommand(annotation_manager, "img.png", old, new)
+        # 构造后原地修改传入对象，不应影响命令内部快照
+        new[0].points[0] = (999, 999)
+        old[0].points[0] = (888, 888)
+        annotation_manager.execute_command(cmd)
+        assert annotation_manager.get_annotations("img.png")[0].points[0] == (0, 0)
+        annotation_manager.undo()
+        assert annotation_manager.get_annotations("img.png")[0].points[0] == (0, 0)
+
+    def test_empty_new_state_clears_file_undoable(self, annotation_manager):
+        old = [Annotation(0, 0, 10, 10, 0)]
+        annotation_manager.save_annotations("img.png", list(old))
+        cmd = EditAnnotationsCommand(annotation_manager, "img.png", old, [])
+        annotation_manager.execute_command(cmd)
+        assert annotation_manager.get_annotations("img.png") == []
+        annotation_manager.undo()
+        assert [a.to_dict() for a in annotation_manager.get_annotations("img.png")] == [
+            a.to_dict() for a in old
+        ]
+
+
+# ==================== 多边形持久化 / 导入导出 / 统计 ====================
+
+class TestSegmentationPersistence:
+    def test_save_and_load_mixed_types(self, annotation_manager):
+        image = "/data/mixed.png"
+        annotations = [
+            Annotation(1, 2, 3, 4, 0),
+            PolygonAnnotation(points=[(10, 10), (50, 10), (50, 50)], class_id=1),
+        ]
+        annotation_manager.save_annotations(image, annotations)
+
+        data = json.loads(
+            Path(annotation_manager.get_annotation_path(image)).read_text(encoding="utf-8")
+        )
+        assert data[0]["type"] == "box"
+        assert data[1]["type"] == "polygon"
+
+        loaded = annotation_manager.load_annotations(image)
+        assert isinstance(loaded[0], Annotation)
+        assert isinstance(loaded[1], PolygonAnnotation)
+        assert loaded == annotations
+
+    def test_statistics_merges_box_and_polygon(self, annotation_manager):
+        annotation_manager.save_annotations(
+            "/a.png",
+            [Annotation(0, 0, 1, 1, 0), PolygonAnnotation(points=[(0, 0), (1, 0), (1, 1)], class_id=0)],
+        )
+        annotation_manager.save_annotations(
+            "/b.png", [PolygonAnnotation(points=[(0, 0), (1, 0), (1, 1)], class_id=2)]
+        )
+        stats = annotation_manager.get_statistics()
+        assert stats["total_images"] == 2
+        assert stats["total_annotations"] == 3
+        assert stats["class_counts"] == {0: 2, 2: 1}
+
+
+class TestSegmentationYoloIO:
+    def test_import_seg_lines(self, annotation_manager):
+        lines = [
+            "0 0.1 0.2 0.3 0.2 0.3 0.6",           # 3 顶点多边形
+            "1 0.5 0.5 0.6 0.5 0.6 0.6 0.5 0.6",   # 4 顶点多边形
+            "0 0.5 0.5 0.1 0.1",                    # 框
+        ]
+        imported, skipped = annotation_manager.import_from_yolo_format("/a.png", lines, 100, 200)
+        assert (imported, skipped) == (3, 0)
+
+        anns = annotation_manager.get_annotations("/a.png")
+        assert isinstance(anns[0], PolygonAnnotation) and anns[0].class_id == 0
+        assert len(anns[0].points) == 3
+        assert anns[0].points[0] == pytest.approx((10.0, 40.0))
+        assert isinstance(anns[1], PolygonAnnotation) and len(anns[1].points) == 4
+        assert isinstance(anns[2], Annotation)
+
+    def test_import_invalid_line_counts(self, annotation_manager):
+        lines = [
+            "",                                 # 空行：忽略且不计入跳过
+            "0 0.1 0.2",                         # 3 字段：无效
+            "0 0.1 0.2 0.3 0.4 0.5 0.6 0.7",     # 偶数长度：无效
+            "a b c d e f g",                     # 非数字：无效
+            "0 0.5 0.5 0.2 0.2",                 # 合法框
+        ]
+        imported, skipped = annotation_manager.import_from_yolo_format("/b.png", lines, 100, 100)
+        assert (imported, skipped) == (1, 3)
+
+    def test_seg_export_roundtrip(self, annotation_manager):
+        image = "/data/poly.png"
+        polys = [
+            PolygonAnnotation(points=[(10.0, 20.0), (30.0, 20.0), (30.0, 60.0)], class_id=1),
+        ]
+        annotation_manager.save_annotations(image, polys)
+        lines = annotation_manager.export_to_yolo_format(image, 100, 200, task="segment")
+        assert len(lines) == 1
+        parts = lines[0].split()
+        assert parts[0] == "1" and len(parts) == 7
+        assert all(len(p.split(".")[1]) == 6 for p in parts[1:])
+
+        target = "/data/poly2.png"
+        annotation_manager.import_from_yolo_format(target, lines, 100, 200)
+        restored = annotation_manager.get_annotations(target)[0]
+        assert isinstance(restored, PolygonAnnotation)
+        for (rx, ry), (ox, oy) in zip(restored.points, polys[0].points, strict=False):
+            assert (rx, ry) == pytest.approx((ox, oy), abs=1e-3)
+
+    def test_detect_export_of_polygon_uses_bbox(self, annotation_manager):
+        image = "/data/poly.png"
+        annotation_manager.save_annotations(
+            image,
+            [PolygonAnnotation(points=[(10, 20), (40, 20), (40, 70), (10, 70)], class_id=0)],
+        )
+        lines = annotation_manager.export_to_yolo_format(image, 100, 100)
+        parts = lines[0].split()
+        assert len(parts) == 5
+        # 外接框中心 (0.25, 0.45)，宽高 (0.30, 0.50)
+        assert float(parts[1]) == pytest.approx(0.25)
+        assert float(parts[2]) == pytest.approx(0.45)
+        assert float(parts[3]) == pytest.approx(0.30)
+        assert float(parts[4]) == pytest.approx(0.50)
+
+    def test_seg_export_expands_box_to_rect(self, annotation_manager):
+        image = "/data/box.png"
+        annotation_manager.save_annotations(image, [Annotation(10, 20, 30, 40, 0)])
+        lines = annotation_manager.export_to_yolo_format(image, 100, 200, task="segment")
+        parts = lines[0].split()
+        # class + 4 顶点 × 2 坐标 = 9 字段
+        assert len(parts) == 9
+        assert [float(p) for p in parts[1:]] == pytest.approx(
+            [0.10, 0.10, 0.40, 0.10, 0.40, 0.30, 0.10, 0.30]
+        )
 

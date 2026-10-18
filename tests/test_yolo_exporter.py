@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from src.core.annotation import Annotation
+from src.core.annotation import Annotation, PolygonAnnotation
 from src.core.class_manager import ClassManager
 from src.utils.yolo_exporter import YOLOExporter, annotation_to_yolo_lines
 
@@ -27,6 +27,34 @@ class TestAnnotationToYoloLines:
 
     def test_empty_annotations(self):
         assert annotation_to_yolo_lines([], 100, 100) == []
+
+    def test_polygon_dataclass_detect_uses_bbox(self):
+        poly = PolygonAnnotation(points=[(10, 20), (40, 20), (40, 70), (10, 70)], class_id=1)
+        lines = annotation_to_yolo_lines([poly], 100, 100)
+        assert lines == ["1 0.250000 0.450000 0.300000 0.500000"]
+
+    def test_polygon_segment_format(self):
+        poly = PolygonAnnotation(points=[(10, 20), (30, 20), (30, 60)], class_id=2)
+        lines = annotation_to_yolo_lines([poly], 100, 200, task="segment")
+        assert lines == ["2 0.100000 0.100000 0.300000 0.100000 0.300000 0.300000"]
+
+    def test_box_segment_format_expands_to_4_points(self):
+        lines = annotation_to_yolo_lines([Annotation(10, 20, 30, 40, 0)], 100, 200, task="segment")
+        assert lines == [
+            "0 0.100000 0.100000 0.400000 0.100000 0.400000 0.300000 0.100000 0.300000"
+        ]
+
+    def test_dict_polygon_input(self):
+        dicts = [{"type": "polygon", "points": [[10, 20], [30, 20], [30, 60]], "class_id": 1}]
+        polys = [PolygonAnnotation(points=[(10, 20), (30, 20), (30, 60)], class_id=1)]
+        assert annotation_to_yolo_lines(dicts, 100, 200, task="segment") == annotation_to_yolo_lines(
+            polys, 100, 200, task="segment"
+        )
+
+    def test_degenerate_polygon_skipped(self):
+        poly = PolygonAnnotation(points=[(10, 20), (30, 20)], class_id=0)
+        assert annotation_to_yolo_lines([poly], 100, 100) == []
+        assert annotation_to_yolo_lines([poly], 100, 100, task="segment") == []
 
 
 @pytest.fixture
@@ -262,3 +290,66 @@ class TestValidateExport:
         assert result["valid"] is False
         assert any("目录不存在" in e for e in result["errors"])
         assert any("data.yaml" in e for e in result["errors"])
+
+
+class TestSegmentExport:
+    def test_export_segment_labels_and_yaml(
+        self, tmp_path, real_image_factory, annotation_manager_in_tmp, class_manager_person
+    ):
+        from src.core.image_manager import ImageManager
+
+        img = real_image_factory("seg.png", size=(40, 30))
+        annotation_manager_in_tmp.save_annotations(
+            img,
+            [PolygonAnnotation(points=[(5, 5), (25, 5), (25, 20)], class_id=0)],
+        )
+        im = ImageManager()
+        im.load_folder(str(tmp_path))
+
+        out = tmp_path / "seg_out"
+        YOLOExporter().export(
+            im, annotation_manager_in_tmp, class_manager_person, str(out), task="segment"
+        )
+
+        label_files = list((out / "labels").glob("*/*.txt"))
+        assert len(label_files) == 1
+        parts = label_files[0].read_text(encoding="utf-8").strip().split()
+        assert parts[0] == "0"
+        assert len(parts) == 7  # class + 3 顶点 × 2 坐标
+
+        data = yaml.safe_load((out / "data.yaml").read_text(encoding="utf-8"))
+        assert data["task"] == "segment"
+        assert data["nc"] == 1
+
+    def test_export_detect_yaml_has_no_task_key(
+        self, tmp_path, real_image_factory, annotation_manager_in_tmp, class_manager_person
+    ):
+        from src.core.image_manager import ImageManager
+
+        img = real_image_factory("det.png", size=(40, 30))
+        annotation_manager_in_tmp.save_annotations(img, [Annotation(5, 5, 20, 15, 0)])
+        im = ImageManager()
+        im.load_folder(str(tmp_path))
+
+        out = tmp_path / "det_out"
+        YOLOExporter().export(im, annotation_manager_in_tmp, class_manager_person, str(out))
+
+        data = yaml.safe_load((out / "data.yaml").read_text(encoding="utf-8"))
+        assert "task" not in data  # 检测导出保持原样
+
+    def test_export_single_image_segment(
+        self, tmp_path, real_image_factory, class_manager_person
+    ):
+        img = real_image_factory("single_seg.png", size=(50, 40))
+        out = tmp_path / "single_seg_out"
+        YOLOExporter().export_single_image(
+            img,
+            [Annotation(5, 5, 25, 20, 0)],  # 框在分割导出下展开为 4 顶点矩形
+            str(out),
+            class_manager_person,
+            task="segment",
+        )
+        label = (out / "single_seg.txt").read_text(encoding="utf-8").strip().split()
+        assert len(label) == 9
+        data = yaml.safe_load((out / "data.yaml").read_text(encoding="utf-8"))
+        assert data["task"] == "segment"

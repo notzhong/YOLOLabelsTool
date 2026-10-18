@@ -152,8 +152,8 @@ class ModelActionsMixin:
                 QMessageBox.information(self, tr("result"), tr("no_target_detected"))
                 return
             
-            # 将检测结果转换为标注
-            annotations = self.model_manager.convert_to_annotations(detections)
+            # 将检测结果转换为标注（按当前任务模式：检测=矩形 / 分割=多边形，Q16）
+            annotations = self.model_manager.convert_to_annotations(detections, task=self.task_mode)
             
             if not annotations:
                 QApplication.restoreOverrideCursor()
@@ -174,6 +174,11 @@ class ModelActionsMixin:
                 self, tr("complete"),
                 tr("auto_annotation_complete").replace("{detection_count}", str(len(annotations)))
             )
+
+            # 模型任务与当前模式不一致时，提示自动适配方式（Q16）
+            hint = self._model_task_adaptation_hint()
+            if hint:
+                self.update_status(hint)
             
         except Exception as e:
             QApplication.restoreOverrideCursor()
@@ -223,7 +228,7 @@ class ModelActionsMixin:
                 try:
                     # 推理
                     detections = self.model_manager.predict(image_path)
-                    annotations = self.model_manager.convert_to_annotations(detections)
+                    annotations = self.model_manager.convert_to_annotations(detections, task=self.task_mode)
                     
                     if annotations:
                         # 保存标注
@@ -255,7 +260,12 @@ class ModelActionsMixin:
                                                   .replace("{total_detections}", str(total_detections))
             )
             
-            self.update_status(tr("batch_annotation_complete_status").replace("{image_count}", str(success_count)))
+            status = tr("batch_annotation_complete_status").replace("{image_count}", str(success_count))
+            # 模型任务与当前模式不一致时，附加自动适配说明（Q16）
+            hint = self._model_task_adaptation_hint()
+            if hint:
+                status += " " + hint
+            self.update_status(status)
             
         except Exception as e:
             QMessageBox.critical(self, tr("error"), tr("batch_annotation_failed").replace("{error}", str(e)))

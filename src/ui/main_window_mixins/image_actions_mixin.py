@@ -44,6 +44,9 @@ class ImageActionsMixin:
         if self.image_manager.get_image_count() > 0:
             self.load_image(0)
 
+        # 任务模式与文件夹内标注内容明显不匹配时，在状态栏提示一次
+        self.hint_task_mode_mismatch()
+
     def close_image_folder(self):
         """关闭当前文件夹，下次启动不再自动打开"""
         self.image_manager._image_paths.clear()

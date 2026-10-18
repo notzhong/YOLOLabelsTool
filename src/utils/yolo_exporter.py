@@ -6,7 +6,7 @@ import os
 import random
 import shutil
 from pathlib import Path
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any, Optional
 import yaml
 
 from typing import TYPE_CHECKING
@@ -22,33 +22,96 @@ else:
 from src.utils.logger import get_logger_simple
 
 
-def annotation_to_yolo_lines(annotations: List[Any], image_width: int, image_height: int) -> List[str]:
-    """
-    将 Annotation 列表转换为 YOLO 格式文本行。
+logger = get_logger_simple(__name__)
 
-    支持 dataclass Annotation（有 to_yolo_format 方法）和普通 dict 两种输入。
+
+def _polygon_points_from(annotation: Any) -> Optional[List[Tuple[float, float]]]:
+    """提取标注的多边形顶点（像素坐标）；非多边形返回 None"""
+    points = getattr(annotation, 'points', None)
+    if points is None and isinstance(annotation, dict):
+        if annotation.get('type') == 'polygon' or 'points' in annotation:
+            points = annotation.get('points')
+    if points is None:
+        return None
+    return [(float(point[0]), float(point[1])) for point in points]
+
+
+def _box_fields_from(annotation: Any) -> Tuple[float, float, float, float, Any]:
+    """提取标注的矩形字段 (x, y, width, height, class_id)"""
+    if isinstance(annotation, dict):
+        return (
+            annotation.get('x', 0),
+            annotation.get('y', 0),
+            annotation.get('width', 0),
+            annotation.get('height', 0),
+            annotation.get('class_id', 0),
+        )
+    return (
+        annotation.x,
+        annotation.y,
+        annotation.width,
+        annotation.height,
+        annotation.class_id,
+    )
+
+
+def annotation_to_yolo_lines(
+    annotations: List[Any],
+    image_width: int,
+    image_height: int,
+    task: str = "detect",
+) -> List[str]:
+    """
+    将标注列表转换为 YOLO 格式文本行。
+
+    task="detect"：`class x_center y_center width height`，多边形取其外接矩形；
+    task="segment"：`class x1 y1 x2 y2 ...`，矩形展开为 4 顶点矩形。
+
+    支持 dataclass Annotation/PolygonAnnotation 和普通 dict 两种输入。
+    顶点数不足 3 的多边形会被跳过（记录警告）。
     """
     lines = []
     for ann in annotations:
-        if hasattr(ann, 'to_yolo_format'):
-            yolo_data = ann.to_yolo_format(image_width, image_height)
+        polygon_points = _polygon_points_from(ann)
+
+        if task == "segment":
+            if polygon_points is None:
+                x, y, width, height, class_id = _box_fields_from(ann)
+                polygon_points = [
+                    (x, y), (x + width, y), (x + width, y + height), (x, y + height),
+                ]
+            else:
+                class_id = ann.get('class_id', 0) if isinstance(ann, dict) else ann.class_id
+
+            if len(polygon_points) < 3:
+                logger.warning(f"跳过无效多边形标注（顶点数不足 3）: class_id={class_id}")
+                continue
+
+            parts = [str(int(class_id))]
+            for x, y in polygon_points:
+                parts.append(f"{x / image_width:.6f}")
+                parts.append(f"{y / image_height:.6f}")
+            lines.append(" ".join(parts))
         else:
-            x = ann.get('x', 0)
-            y = ann.get('y', 0)
-            width = ann.get('width', 0)
-            height = ann.get('height', 0)
-            class_id = ann.get('class_id', 0)
+            if polygon_points is not None:
+                if len(polygon_points) < 3:
+                    logger.warning("跳过无效多边形标注（顶点数不足 3）")
+                    continue
+                xs = [point[0] for point in polygon_points]
+                ys = [point[1] for point in polygon_points]
+                x, y = min(xs), min(ys)
+                width, height = max(xs) - x, max(ys) - y
+                class_id = ann.get('class_id', 0) if isinstance(ann, dict) else ann.class_id
+            else:
+                x, y, width, height, class_id = _box_fields_from(ann)
+
             x_center = (x + width / 2) / image_width
             y_center = (y + height / 2) / image_height
             norm_width = width / image_width
             norm_height = height / image_height
-            yolo_data = [class_id, x_center, y_center, norm_width, norm_height]
-
-        if len(yolo_data) >= 5:
-            line = f"{int(yolo_data[0])} {yolo_data[1]:.6f} {yolo_data[2]:.6f} {yolo_data[3]:.6f} {yolo_data[4]:.6f}"
-        else:
-            line = " ".join(f"{val:.6f}" for val in yolo_data)
-        lines.append(line)
+            lines.append(
+                f"{int(class_id)} {x_center:.6f} {y_center:.6f} {norm_width:.6f} {norm_height:.6f}"
+            )
     return lines
 
 
@@ -73,7 +136,8 @@ class YOLOExporter:
         split_ratios: Tuple[float, float, float] = (0.7, 0.2, 0.1),
         copy_images: bool = True,
         yaml_filename: str = "data.yaml",
-        random_seed: int = 42
+        random_seed: int = 42,
+        task: str = "detect"
     ):
         """
         导出为YOLO格式
@@ -86,6 +150,7 @@ class YOLOExporter:
             split_ratios: 训练集/验证集/测试集比例
             copy_images: 是否复制图片到输出目录
             random_seed: 随机种子
+            task: 任务类型（detect 输出检测框格式，segment 输出多边形分割格式）
         """
         # 验证分割比例
         if abs(sum(split_ratios) - 1.0) > 0.01:
@@ -107,22 +172,22 @@ class YOLOExporter:
         # 导出各个子集
         self._export_subset(
             "train", train_paths, image_manager, annotation_manager, 
-            class_manager, output_dir, copy_images
+            class_manager, output_dir, copy_images, task
         )
         self._export_subset(
             "val", val_paths, image_manager, annotation_manager,
-            class_manager, output_dir, copy_images
+            class_manager, output_dir, copy_images, task
         )
         self._export_subset(
             "test", test_paths, image_manager, annotation_manager,
-            class_manager, output_dir, copy_images
+            class_manager, output_dir, copy_images, task
         )
         
         # 导出数据集划分文件
         self._export_split_files(output_dir, train_paths, val_paths, test_paths)
         
         # 导出data.yaml配置文件
-        self._export_yaml_config(class_manager, output_dir, yaml_filename)
+        self._export_yaml_config(class_manager, output_dir, yaml_filename, task=task)
     
     def _create_output_structure(self, output_dir: str):
         """创建输出目录结构"""
@@ -158,7 +223,8 @@ class YOLOExporter:
         annotation_manager: 'AnnotationManager',
         class_manager: ClassManager,
         output_dir: str,
-        copy_images: bool
+        copy_images: bool,
+        task: str = "detect"
     ):
         """导出子集（委托给 _export_single_subset_image）"""
         output_path = Path(output_dir)
@@ -169,12 +235,12 @@ class YOLOExporter:
             if copy_images:
                 self._export_single_subset_image(
                     image_path, image_manager, annotation_manager,
-                    images_dir, labels_dir,
+                    images_dir, labels_dir, task=task,
                 )
             else:
                 self._export_single_subset_image(
                     image_path, image_manager, annotation_manager,
-                    None, labels_dir,
+                    None, labels_dir, task=task,
                 )
     
     def _copy_image(self, image_path: str, output_images_dir: Path):
@@ -194,6 +260,7 @@ class YOLOExporter:
         annotation_manager,
         output_images_dir: Path,
         output_labels_dir: Path,
+        task: str = "detect",
     ):
         """导出单张图片及其 YOLO 标注到指定子集目录（供 DatasetSplitter 和内部使用）"""
         try:
@@ -209,14 +276,17 @@ class YOLOExporter:
             annotations = annotation_manager.get_annotations(image_path)
             self._write_yolo_file(
                 annotations, image_width, image_height,
-                output_labels_dir / f"{Path(image_path).stem}.txt"
+                output_labels_dir / f"{Path(image_path).stem}.txt",
+                task=task,
             )
         except Exception as e:
             self.logger.error(f"导出失败 {image_path}: {e}")
 
-    def _write_yolo_file(self, annotations, image_width, image_height, output_file: Path):
+    def _write_yolo_file(
+        self, annotations, image_width, image_height, output_file: Path, task: str = "detect"
+    ):
         """写入 YOLO 标注文件"""
-        lines = annotation_to_yolo_lines(annotations, image_width, image_height)
+        lines = annotation_to_yolo_lines(annotations, image_width, image_height, task=task)
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write("\n".join(lines) + ("\n" if lines else ""))
     
@@ -273,8 +343,14 @@ class YOLOExporter:
         """构建 names 字段（委托给 ClassManager）"""
         return class_manager.build_names_config()
 
-    def _export_yaml_config(self, class_manager: ClassManager, output_dir: str, yaml_filename: str = "data.yaml"):
-        """导出 data.yaml 配置文件"""
+    def _export_yaml_config(
+        self,
+        class_manager: ClassManager,
+        output_dir: str,
+        yaml_filename: str = "data.yaml",
+        task: str = "detect",
+    ):
+        """导出 data.yaml 配置文件（分割任务追加 task: segment 字段）"""
         output_path = Path(output_dir)
         yaml_file = output_path / yaml_filename
 
@@ -288,6 +364,8 @@ class YOLOExporter:
             "nc": class_manager.get_class_count(),
             "names": names_value
         }
+        if task == "segment":
+            yaml_data["task"] = "segment"
 
         with open(yaml_file, 'w', encoding='utf-8') as f:
             yaml.dump(yaml_data, f, default_flow_style=False, allow_unicode=True)
@@ -298,7 +376,8 @@ class YOLOExporter:
         annotations: List,
         output_dir: str,
         class_manager: ClassManager,
-        yaml_filename: str = "data.yaml"
+        yaml_filename: str = "data.yaml",
+        task: str = "detect"
     ):
         """导出单张图片的 YOLO 格式"""
         output_path = Path(output_dir)
@@ -315,7 +394,7 @@ class YOLOExporter:
         image_name = Path(image_path).stem
         label_file = output_path / f"{image_name}.txt"
 
-        lines = annotation_to_yolo_lines(annotations, image_width, image_height)
+        lines = annotation_to_yolo_lines(annotations, image_width, image_height, task=task)
         with open(label_file, 'w', encoding='utf-8') as f:
             f.write("\n".join(lines) + ("\n" if lines else ""))
 
@@ -336,6 +415,8 @@ class YOLOExporter:
             "nc": class_manager.get_class_count(),
             "names": names_value
         }
+        if task == "segment":
+            config_data["task"] = "segment"
 
         with open(config_file, 'w', encoding='utf-8') as f:
             yaml.dump(config_data, f, default_flow_style=False, allow_unicode=True)
@@ -350,7 +431,8 @@ class YOLOExporter:
         val_paths: List[str],
         test_paths: List[str],
         copy_images: bool = True,
-        yaml_filename: str = "data.yaml"
+        yaml_filename: str = "data.yaml",
+        task: str = "detect"
     ):
         """使用自定义划分导出数据集"""
         # 创建输出目录结构
@@ -359,22 +441,22 @@ class YOLOExporter:
         # 导出各个子集
         self._export_subset(
             "train", train_paths, image_manager, annotation_manager,
-            class_manager, output_dir, copy_images
+            class_manager, output_dir, copy_images, task
         )
         self._export_subset(
             "val", val_paths, image_manager, annotation_manager,
-            class_manager, output_dir, copy_images
+            class_manager, output_dir, copy_images, task
         )
         self._export_subset(
             "test", test_paths, image_manager, annotation_manager,
-            class_manager, output_dir, copy_images
+            class_manager, output_dir, copy_images, task
         )
         
         # 导出数据集划分文件
         self._export_split_files(output_dir, train_paths, val_paths, test_paths)
         
         # 导出data.yaml配置文件
-        self._export_yaml_config(class_manager, output_dir, yaml_filename)
+        self._export_yaml_config(class_manager, output_dir, yaml_filename, task=task)
     
     def validate_export(self, output_dir: str, yaml_filename: str = "data.yaml") -> Dict:
         """验证导出结果"""

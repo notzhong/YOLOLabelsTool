@@ -53,7 +53,8 @@ class DatasetSplitter:
         class_manager=None,
         split_ratios: Tuple[float, float, float] = (0.7, 0.2, 0.1),
         copy_images: bool = True,
-        random_seed: int = 42
+        random_seed: int = 42,
+        task: str = "detect"
     ):
         """
         划分并导出数据集
@@ -65,6 +66,7 @@ class DatasetSplitter:
             split_ratios: 训练集/验证集/测试集比例
             copy_images: 是否复制图片
             random_seed: 随机种子
+            task: 任务类型（detect/segment）
         """
         # 获取所有图片路径
         image_paths = image_manager.get_all_image_paths()
@@ -97,12 +99,13 @@ class DatasetSplitter:
                         image_path, image_manager, annotation_manager,
                         output_path / "images" / subset_name,
                         output_path / "labels" / subset_name,
+                        task=task,
                     )
 
         # 生成 data.yaml（需要 class_manager）
         if class_manager:
             exporter = YOLOExporter()
-            exporter._export_yaml_config(class_manager, str(output_path))
+            exporter._export_yaml_config(class_manager, str(output_path), task=task)
     
     def _export_split_info(
         self,

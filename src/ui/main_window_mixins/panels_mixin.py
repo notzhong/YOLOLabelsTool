@@ -115,6 +115,9 @@ class PanelsMixin:
         # 画布的状态提示（如"未加载图片"）转发到主窗口状态栏。
         # status_message 信号此前定义了但从未连接，画布侧发什么都无人接收。
         self.canvas.status_message.connect(self.update_status)
+        # 多边形编辑手势：开始=快照，结束=生成可撤销命令（Q7：每次手势一步撤销）
+        self.canvas.edit_gesture_started.connect(self._on_canvas_edit_started)
+        self.canvas.edit_gesture_finished.connect(self._on_canvas_edit_finished)
 
         layout.addWidget(self.canvas)
         
