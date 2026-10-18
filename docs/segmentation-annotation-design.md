@@ -87,8 +87,10 @@
 - 工具栏下拉框 `task_mode_combo`（`detect` / `segment`），持久化到 `config.ini [preferences] task_mode`。
 - 切换任务模式会同步画布（`canvas.set_task_mode`），取消进行中的绘制。
 - **模式只管绘制与导出格式，不改变存储**：同一条标注数据在两种模式下都能显示。
-- 打开文件夹后若已有标注与当前模式不匹配（例如 segment 模式但全是框），状态栏提示，
-  不阻塞操作（`hint_task_mode_mismatch`）。
+- 打开文件夹后若已有标注**以对方类型为主**（数量严格多于本类型，例如 segment
+  模式但全是框），状态栏提示一次，不阻塞操作（`hint_task_mode_mismatch`）。
+  少量混编的对方标注不提示：单条少数派不足以支撑"建议切换模式"的措辞，
+  且两种模式下对方标注都仍可选中查看与编辑。
 
 ## 6. 导入 / 转换 / 导出
 
@@ -144,8 +146,9 @@
 ### 7.2 其他规则
 
 - 矩形移动/缩放的撤销语义维持原状（不在本次手势化范围内）。
-- 绘制过程中 Ctrl+Z = 回退顶点（窗口 `undo()` 先查 `canvas.is_polygon_drawing()`）；
-  绘制中 `redo()` 不动作。
+- 绘制过程中 Ctrl+Z = 回退顶点（窗口 `undo()` 先查 `canvas.is_polygon_drawing()`；
+  撤销 QAction 被禁用时按键落到画布，`keyPressEvent` 以 `StandardKey.Undo` 兜底
+  同一行为）；绘制中 `redo()` 不动作。
 - 批量操作（文件夹导入/转换）**不是用户手势**，完成后直接清空撤销/重做栈，
   避免栈中命令指向过期状态。
 - 撤销栈上限沿用 `MAX_UNDO_SIZE = 100`；`push_command` 入栈时清空重做栈（与执行命令一致）。
@@ -181,7 +184,8 @@
   画布事件捕获、最少顶点守卫、窗口接线（模式持久化/导出 task/Ctrl+Z 拦截/手势槽）、
   Mixin 注册、**新增 i18n key 双侧齐全**。
 - **全流程复验**（`tools/verify_polygon_flow.py`，offscreen，不进 CI）：
-  A–L 12 个场景，覆盖绘制/编辑/导入/转换/导出/持久化。
+  A–M 13 个场景，覆盖绘制/编辑/导入/转换/导出/持久化，以及空撤销栈下
+  绘制中 Ctrl+Z 的真实按键回退（M）。
   注意：图形项交互必须用 `QTest` 真实事件流（详见 `tools/README.md` 说明）。
 
 ## 10. 已知取舍

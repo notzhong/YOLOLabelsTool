@@ -156,6 +156,19 @@ class TestCanvasPolygon:
             "keyPressEvent 缺少 Esc/Backspace 处理：绘制中无法取消/回退顶点"
         )
 
+    def test_drawing_ctrl_z_fallback_when_action_disabled(self, canvas_src):
+        """撤销 QAction 被禁用时 Ctrl+Z 落到画布，绘制中必须同样回退顶点
+
+        回归背景：Ctrl+Z 绑定在窗口 action_undo 上；撤销栈为空（刚开夹/切图/
+        批量操作后）时该 QAction 被 setEnabled(False)，快捷键不再触发窗口
+        undo() 拦截，按键直接落到画布——绘制首个多边形时 Ctrl+Z 曾毫无反应。
+        """
+        body = _func_body(canvas_src, "keyPressEvent", class_name="AnnotationCanvas")
+        assert "StandardKey.Undo" in body and "polygon_undo_last_point" in body, (
+            "keyPressEvent 缺少 Ctrl+Z（Undo）回退：撤销 QAction 禁用时"
+            "绘制中 Ctrl+Z 会毫无反应（应回退顶点）"
+        )
+
     def test_text_label_does_not_swallow_mouse(self, canvas_src):
         """文本标签必须点击穿透（否则标签覆盖处的顶点/边无法操作）"""
         body = _func_body(canvas_src, "_draw_one_annotation", class_name="AnnotationCanvas")

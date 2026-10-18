@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QPointF, QRectF, Signal
 from PySide6.QtGui import (
     QPainter, QPen, QBrush, QColor, QPixmap, QAction,
-    QIcon, QMouseEvent, QWheelEvent, QFont, QPolygonF
+    QIcon, QMouseEvent, QWheelEvent, QFont, QPolygonF, QKeySequence
 )
 
 from src.core.annotation import Annotation, PolygonAnnotation
@@ -1074,6 +1074,13 @@ class AnnotationCanvas(QGraphicsView):
                 return
             if event.key() in (Qt.Key_Return, Qt.Key_Enter):
                 self._finish_polygon()
+                event.accept()
+                return
+            # 撤销 QAction 被禁用时（撤销栈为空），Ctrl+Z 快捷键不会触发窗口
+            # undo()，按键直接落到画布：绘制中同样解释为回退顶点，与窗口层
+            # 拦截保持一致（与 Esc/Backspace 走同一条投递路径）。
+            if event.matches(QKeySequence.StandardKey.Undo):
+                self.polygon_undo_last_point()
                 event.accept()
                 return
         super().keyPressEvent(event)

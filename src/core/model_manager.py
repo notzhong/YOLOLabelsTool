@@ -136,7 +136,8 @@ class ModelManager:
                     px = min(max(float(x) * img_width, 0.0), float(img_width))
                     py = min(max(float(y) * img_height, 0.0), float(img_height))
                     points.append((px, py))
-            except (TypeError, ValueError, IndexError):
+            except (TypeError, ValueError, IndexError) as e:
+                self.logger.error(f"解析掩码多边形失败（该掩码已忽略）: {e}")
                 points = []
             polygons.append(points if len(points) >= 3 else None)
         return polygons

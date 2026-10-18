@@ -55,7 +55,11 @@ class SegmentationMixin:
         )
 
     def hint_task_mode_mismatch(self):
-        """打开文件夹后：标注内容与任务模式明显不匹配时在状态栏提示一次"""
+        """打开文件夹后：标注以对方类型为主时在状态栏提示一次（建议切换模式）
+
+        仅在"对方类型数量严格多于本类型"时提示：少量混编的对方标注不足以
+        支撑"建议切换模式"；且两种模式下对方标注都仍可选中查看与编辑。
+        """
         if self.image_manager.get_image_count() == 0:
             return
 
@@ -82,11 +86,13 @@ class SegmentationMixin:
     def import_segmentation_current(self):
         """导入当前图片的 YOLO 标签文件（框与多边形混合可解析，作为一步可撤销操作）"""
         if not self.current_image_path:
+            self.logger.warning("导入标签失败：当前未打开图片")
             QMessageBox.warning(self, tr("warning"), tr("no_image_loaded"))
             return
 
         image_size = self.canvas.get_image_size()
         if not image_size:
+            self.logger.warning("导入标签失败：画布未加载图片（无法换算归一化坐标）")
             QMessageBox.warning(self, tr("warning"), tr("no_image_loaded"))
             return
 
@@ -111,6 +117,7 @@ class SegmentationMixin:
             with open(label_path, "r", encoding="utf-8") as f:
                 lines = f.readlines()
         except OSError as e:
+            self.logger.error(f"读取标签文件失败 {label_path}: {e}")
             QMessageBox.critical(
                 self, tr("error"), tr("import_failed").replace("{error}", str(e))
             )
@@ -128,6 +135,9 @@ class SegmentationMixin:
             # 没有有效行（空文件/全部无效）：恢复原标注，避免误清空
             self.annotation_manager.save_annotations(self.current_image_path, old_state)
             self.load_annotations_for_current_image()
+            self.logger.warning(
+                f"导入标签未解析出有效行（跳过 {skipped} 行）：{label_path}"
+            )
             QMessageBox.warning(self, tr("warning"), tr("import_nothing_parsed"))
             return
 
@@ -158,6 +168,7 @@ class SegmentationMixin:
     def import_segmentation_batch(self):
         """批量导入文件夹中的 YOLO 标签（按文件名主干匹配图片，不可撤销、直接落盘）"""
         if self.image_manager.get_image_count() == 0:
+            self.logger.warning("批量导入失败：未打开图片文件夹")
             QMessageBox.warning(self, tr("warning"), tr("no_image_loaded"))
             return
 
@@ -253,6 +264,11 @@ class SegmentationMixin:
 
         progress.close()
 
+        self.logger.info(
+            f"批量导入完成：{imported_files} 个文件、{imported_total} 条标注"
+            f"（跳过 {skipped_total} 行）"
+        )
+
         # 批量导入直接落盘、不可撤销：清空撤销栈，避免旧命令把导入结果覆盖回去
         self.annotation_manager._undo_stack.clear()
         self.annotation_manager._redo_stack.clear()
@@ -323,6 +339,7 @@ class SegmentationMixin:
     def convert_current_to_segment(self):
         """当前图片：转为分割标注（矩形 → 四点多边形，可撤销）"""
         if not self.current_image_path:
+            self.logger.warning("转为分割标注失败：当前未打开图片")
             QMessageBox.warning(self, tr("warning"), tr("no_image_loaded"))
             return
 
@@ -337,6 +354,7 @@ class SegmentationMixin:
     def convert_current_to_detect(self):
         """当前图片：转为检测标注（多边形 → 外接矩形，可撤销）"""
         if not self.current_image_path:
+            self.logger.warning("转为检测标注失败：当前未打开图片")
             QMessageBox.warning(self, tr("warning"), tr("no_image_loaded"))
             return
 
@@ -360,6 +378,9 @@ class SegmentationMixin:
         """文件夹批量转换：确认 + 进度，直接落盘、不可撤销"""
         paths = self.image_manager.get_all_image_paths()
         if not paths:
+            self.logger.warning(
+                f"文件夹批量转换失败：没有可处理的图片（目标 {target_task}）"
+            )
             QMessageBox.warning(self, tr("warning"), tr("no_image_loaded"))
             return
 
@@ -413,6 +434,8 @@ class SegmentationMixin:
             QApplication.processEvents()
 
         progress.close()
+
+        self.logger.info(f"文件夹批量转换完成：{converted_total} 条标注 → {target_task}")
 
         # 批量转换直接落盘、不可撤销：清空撤销栈
         self.annotation_manager._undo_stack.clear()

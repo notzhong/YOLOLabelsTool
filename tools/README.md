@@ -24,7 +24,7 @@ export QT_QPA_PLATFORM=offscreen   # 无头模式
 | `smoke_mainwindow.py` | MainWindow 实例化 + `update_ui_texts` 全链路 | 5 个 Mixin 装配、文案刷新链 |
 | `smoke_export_deps.py` | 导出依赖"询问后安装" 7 条路径 | 真实检测 / 拒绝中止 / 同意触发 / 冻结复制命令（剪贴板断言）/ InstallWorker 成功与失败（真实 pip 子进程） |
 | `verify_no_image_annotation.py` | 未加载图片即标注的回归：A 冷启动空画布真实派发鼠标按下/移动/松开；B 加载后关夹再拖拽（专测 `_image_item` 残留）；C 无图直调 `add_annotation_with_command` + 图片解码失败回滚 | 三条路径都不抛异常且不产生标注；正常图片拖拽仍可用（守卫未误伤）；关夹后 `canvas.has_image` 为 False |
-| `verify_polygon_flow.py` | 分割标注（2.5.0）全流程：A 初始化 / B 绘制+双击闭合 / C Backspace+Esc / D 检测框绘制回归 / E 顶点拖动（手势信号、恰好一步撤销、画布-缓存对象一致性、undo/redo）/ F 绘制中 Ctrl+Z 拦截 / G 导入当前图片 / H 当前图片转换 / I 导出（临时转换确认 + `task: segment`）/ J 任务模式持久化 / K 批量导入匹配 / L 文件夹批量转换 | 12 个场景全部通过；多边形进管理器与撤销栈；一次手势恰一步撤销；导出标签为分割格式 |
+| `verify_polygon_flow.py` | 分割标注（2.5.0）全流程：A 初始化 / B 绘制+双击闭合 / C Backspace+Esc / D 检测框绘制回归 / E 顶点拖动（手势信号、恰好一步撤销、画布-缓存对象一致性、undo/redo）/ F 绘制中 Ctrl+Z 拦截（窗口 undo 路径，栈非空）/ G 导入当前图片 / H 当前图片转换 / I 导出（临时转换确认 + `task: segment`）/ J 任务模式持久化 / K 批量导入匹配 / L 文件夹批量转换 / M 空撤销栈绘制中 Ctrl+Z 真实按键（QAction 禁用时按键落到画布仍回退顶点） | 13 个场景全部通过；多边形进管理器与撤销栈；一次手势恰一步撤销；导出标签为分割格式 |
 
 ```bash
 python tools/verify_split.py
@@ -46,7 +46,9 @@ python tools/smoke_mainwindow.py
 > mouseRelease`，坐标用 `canvas.mapFromScene` 换算）：图形项事件（多边形顶点拖动）只有在
 > 事件从窗口系统管线进入时才会被视图→场景分发给 item；手搓 `QMouseEvent` 直接调
 > `canvas.mousePressEvent` 时二次分发不生效——画布自身逻辑照常，但 item 静默收不到事件。
-> 键盘事件（Esc/Backspace）无此问题，可直接构造 `QKeyEvent` 调用 `keyPressEvent`。
+> 键盘事件（Esc/Backspace）无此问题，可直接构造 `QKeyEvent` 调用 `keyPressEvent`；
+> 但 Ctrl+Z 有两条真实路径：撤销栈非空时先被窗口 QAction 拦截（场景 F，直调 `w.undo()`），
+> 为空时 QAction 禁用、按键落到画布（场景 M，用 `QTest.keyClick` 覆盖）——两条都要保。
 
 ## 维护约定
 

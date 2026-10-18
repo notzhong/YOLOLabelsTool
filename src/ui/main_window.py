@@ -754,6 +754,8 @@ class MainWindow(
         """撤销（绘制中的多边形：先回退最后一个顶点）"""
         # Ctrl+Z 绑定在窗口级 QAction 上，按键事件先于画布到达这里；
         # 正在绘制多边形时应把"撤销"解释为回退顶点，而不是撤销上一条命令。
+        # 撤销栈为空时该 QAction 被禁用、快捷键不触发，按键落到画布——
+        # 画布 keyPressEvent 里有相同的 Undo 兜底（与 Esc/Backspace 同一路径）。
         if self.canvas.is_polygon_drawing():
             self.canvas.polygon_undo_last_point()
             return

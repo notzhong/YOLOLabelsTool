@@ -8,16 +8,17 @@
   D. detect 模式矩形绘制回归
   E. 顶点拖动：手势开始/结束信号；恰好一步撤销；画布与缓存对象一致性；
      Ctrl+Z（窗口 undo）恢复顶点、redo 再应用
-  F. 绘制中 Ctrl+Z 拦截：回退顶点而非撤销命令
+  F. 绘制中 Ctrl+Z 拦截（撤销栈非空，窗口 undo 路径）：回退顶点而非撤销命令
   G. 导入当前图片 YOLO 标签（框 + 多边形 + 无效行）：解析、跳过、一步撤销
   H. 当前图片转换：框 → 多边形（可撤销）
   I. segment 导出：导出前临时转换确认；data.yaml 含 task: segment；标签为分割格式
   J. 任务模式持久化：切换后写入 config.ini [preferences] task_mode
   K. 批量导入标签文件夹：按文件名主干与图片匹配
   L. 文件夹批量转换：直接落盘、清空撤销栈
+  M. 空撤销栈绘制中 Ctrl+Z：QAction 被禁用时按键落到画布（真实按键）仍回退顶点
 
-跑法（Windows，offscreen 无需真实显示器）：
-  E:\\ProgramData\\miniconda3\\envs\\yolo\\python.exe tools\\verify_polygon_flow.py
+跑法（Windows，offscreen 无需真实显示器；需 PySide6，如 conda 环境 yolo）：
+  python tools\\verify_polygon_flow.py
 退出码 0 表示全部通过。
 """
 
@@ -342,6 +343,25 @@ def main():
     assert img1_anns and all(isinstance(a, Annotation) for a in img1_anns)
     assert not w.annotation_manager.can_undo(), "批量转换后应清空撤销栈"
     print("[OK] L 文件夹批量转换：全部转框、撤销栈已清空")
+
+    # ---- M. 空撤销栈绘制中 Ctrl+Z（QAction 禁用时的真实按键路径）----
+    # L 批量转换后撤销栈已清空且调用了 update_undo_redo_actions()：
+    # action_undo 处于禁用状态，Ctrl+Z 快捷键不会触发窗口 undo()，
+    # 按键直接落到画布——画布必须自己兜住"绘制中回退顶点"。
+    assert not w.annotation_manager.can_undo()
+    assert not w.action_undo.isEnabled(), "本场景前置条件：撤销 QAction 应处于禁用"
+    click(c, QPointF(20, 205))   # 左下空白区（在所有标注外接框之外）
+    click(c, QPointF(60, 235))
+    assert c.is_polygon_drawing() and len(c._poly_points) == 2
+    stack_len = len(w.annotation_manager._undo_stack)
+    QTest.keyClick(c, Qt.Key_Z, Qt.ControlModifier)   # 真实按键，非直调 undo()
+    assert len(c._poly_points) == 1, (
+        "空撤销栈时 QAction 被禁用：绘制中 Ctrl+Z 应回退顶点（画布兜底）"
+    )
+    assert c.is_polygon_drawing()
+    assert len(w.annotation_manager._undo_stack) == stack_len
+    key_event(c, Qt.Key_Escape)
+    print("[OK] M 空撤销栈绘制中 Ctrl+Z：真实按键落到画布仍回退顶点")
 
     w.close()
     print("\n=== 分割标注流程验收：全部通过 ===")

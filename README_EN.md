@@ -543,64 +543,37 @@ Questions or suggestions:
 
 ## Changelog
 
+### v2.5.1 (2026-10-19)
+
+- **Bug fix**: Ctrl+Z had no effect while drawing a polygon when the undo stack was empty (freshly opened folder / image switch / after batch import or conversion) — a disabled Undo QAction stops firing the window-level interception and the key falls through to the canvas; the canvas now provides the same "remove last vertex" fallback (same delivery path as Esc/Backspace)
+- **Robustness**: logging added per the project audit rules — segmentation mask parse failures, batch import/conversion completion and failure paths
+- **Docs**: the task-mode mismatch hint's trigger is now documented as "the other annotation type dominates" (design doc synced; behaviour unchanged — small mixed batches no longer produce misleading advice)
+- **Quality**: guard cases 62 → 63 (new: canvas Undo fallback when the QAction is disabled); verify script gains scenario M (real-key Ctrl+Z with an empty undo stack), 12 → 13 scenarios (A–L → A–M)
+
 ### v2.5.0 (2026-10-18)
-- **Segmentation annotation (new)**: a global toolbar "Task mode" switch Detect (boxes) / Segment (polygons), persisted to config; canvas supports vertex-by-vertex polygon drawing closed by double-click / first-vertex click / Enter (Esc cancels, Backspace removes the last vertex) plus vertex dragging, body translation, double-click edge vertex insert, right-click vertex delete; every edit gesture is one undo step
-- **Export (segment)**: export YOLO labels per task mode (polygons as normalized vertices, `task: segment` written into data.yaml); when annotations do not match the mode, export first lists the count and asks to confirm a temporary conversion (stored data unchanged)
-- **Label import (new)**: import existing YOLO labels — current image (one undoable step) and batch folder matching by filename (overwrite confirmation + progress, not undoable); boxes and polygons parsed together, invalid lines skipped and summarized
-- **Annotation conversion (new)**: box ↔ polygon via one click for the current image (undoable) or the whole folder as a batch (confirmed + progress, saved directly)
-- **Segmentation model assistance**: auto-annotating with a segmentation model produces polygons (from `masks.xyn`); if the model task and current mode differ, results auto-adapt (box → 4-point polygon / mask → bounding box) with a status-bar hint
-- **Quality**: new `tests/test_segmentation_guard.py` (62 static guard cases: canvas events / window wiring / mixin registration / two-sided i18n key parity) and `tools/verify_polygon_flow.py` (offscreen end-to-end check, scenarios A–L)
-- **Fix**: annotation text labels no longer swallow mouse clicks (click-through), fixing selection/dragging of annotations under a label
-- **Fix**: annotating on the canvas with no image loaded no longer crashes (previously `Path(None)` TypeError); the gesture is inert with no image and the status bar explains why
-- **Fix**: canvas state resets correctly after closing an image folder; a failed image decode rolls back the current-image state instead of leaving a contradictory "current image set but nothing shown"
-- **Robustness**: explicit empty-path contract for `AnnotationManager` — reads return empty results, writes raise `ValueError` rather than pathlib's `TypeError`
-- **i18n**: two new status hints, `canvas_no_image_hint` and `annotation_ignored_no_image` (Chinese + English)
-- **Quality**: 11 new static guard tests for the no-image three-layer defense and two-sided translation completeness; v2.5.0 totals 334 tests at 84.34% coverage (CI gate 80%)
-- **Dev tooling**: new `tools/verify_no_image_annotation.py` (no-image annotation regression, with real mouse gestures and an English-locale check)
+- **Segmentation annotation (new)**: full polygon (YOLO-seg) pipeline — persisted Detect/Segment task-mode switch; vertex drawing and editing (drag / translate / insert / delete, one undo step per gesture); label import and box ↔ polygon conversion (current image undoable / folder batch); task-aware export (`task: segment`, temporary-conversion confirmation); segmentation model assistance (`masks.xyn`, auto-adapt on task mismatch)
+- **Bug fixes**: label click-through; no-image annotation crash (empty-path contract + three-layer defense); folder-close state reset and decode-failure rollback
+- **i18n**: new Chinese + English keys such as `canvas_no_image_hint` (parity across both INIs)
+- **Quality**: 334 tests at 84.34% coverage; 73 new static guards (62 segmentation + 11 no-image) and two offscreen scripts, `verify_polygon_flow.py` and `verify_no_image_annotation.py`
 
 ### v2.4.0 (2026-09-24)
-- **Quality infrastructure**: 196 unit tests (83% coverage) + GitHub Actions CI (ruff + pytest, Python 3.10/3.12 × Linux/Windows) and pre-commit hooks; the test suite is finally version-controlled
-- **Dependency slimming**: export dependencies became optional (`requirements-export.txt` / `.[export]`); missing packages are now offered for one-click install in the export dialog (the packaged build copies the command instead); ultralytics' silent auto-install is disabled
-- **Refactoring**: main window 2,053 → 822 lines; train/validation dialogs 1,142/856 → 143/81 lines (split into responsibility mixins, method bodies byte-preserved)
-- **Robustness**: config / QSS / icon / annotations / training outputs are anchored to the app root (settings no longer "forget", annotations no longer appear lost when launched from another directory)
-- **Bug fixes**: broken relative imports in mixins (add-class / train / export buttons), wrong image after removing earlier images, batch annotations overwritten by stale canvas, export failure on CPU-only machines, undo stack surviving folder close, dead "reconfigure training" flow, cross-image undo scope
-- **Dev tooling**: new `tools/` verification scripts (mixin fidelity, operation-flow regression, offscreen smokes)
+- **Quality infrastructure**: 196 unit tests (83% coverage) finally version-controlled + GitHub Actions CI (ruff + pytest, 3.10/3.12 × Linux/Windows) + pre-commit; optional export dependencies (`requirements-export.txt` / `.[export]`)
+- **Refactoring**: main window 2,053 → 822 lines, train/validation dialogs split; config/annotations/training outputs anchored to the app root; operation-flow defects fixed (mixin imports, image-removal index, stale canvas, …)
 
 ### v2.3.0 (2026-05-10)
-- **Model export**: new export feature supporting ONNX / TensorRT / OpenVINO / CoreML / TFLite / TF SavedModel / PaddlePaddle / ncnn (8 formats)
-- **Export enhancements**: auto-detect training image size, custom filenames, extension sync per format, auto-move output to a chosen path, missing-dependency popup with install commands
-- **Incremental training**: continue learning on trained weights with new data; mutually exclusive with resume training
-- **Fixes**: data.yaml export now uses absolute paths, Windows workers auto-capped ≤2 to avoid `torch.save` I/O errors, export file-move handles Path/str returns, OpenVINO companion files (.bin) moved together
+- Model export in 8 formats (ONNX / TensorRT / OpenVINO / CoreML / TFLite / TF SavedModel / PaddlePaddle / ncnn), incremental training, data-path and Windows workers fixes
 
 ### v2.2.0 (2026-05-04)
-- **Context menu**: delete/remove unlabeled images, Ctrl/Shift multi-select batch ops
-- **Annotation matching**: index-based instead of coordinate-based, eliminating accidental deletions
-- **Class management**: double-click/right-click quick rename and edit
-- **Eye-care theme**: new warm dark theme
-- **Verification window**: dxcam resource leak fix, Unicode batch drawing performance
-- **Training fixes**: signal-accumulation popup, lr0 default mismatch, TQDM/GBK/epoch display and 6 more
-- **Packaging fixes**: removed unittest/pydoc exclusions that broke torch/scipy imports
+- Context menu and multi-select batch ops, index-based annotation matching, quick class rename, eye-care theme, verification-window optimizations, training/packaging fixes
 
 ### v2.1.0 (2026-05-01)
-- **Component extraction**: AnnotationCanvas, StatsPanel, ModelInfoPanel, WindowHighlighter, RegionSelector split into standalone modules
-- **Unified dataset export**: DatasetSplitter delegates to YOLOExporter, removing duplicate methods
-- **LRU image cache**, **i18n en_US fallback chain**, **auto-save on image switch**
-- **176 unit tests** covering core data classes, command pattern, class management, dataset split/export, i18n and platform guards (80%+ coverage; the originally announced 80 tests were never committed — restoration tracked in docs/optimization-analysis-2026-09-24.md)
+- Standalone components (canvas / stats / model info …), unified dataset export, LRU image cache, i18n fallback chain, 80%+ unit-test coverage
 
 ### v2.0.0 (2026-04-26)
-- **Refactor**: extracted `annotation_to_yolo_lines()`, `_process_boxes()`, merged browse methods
-- **Optimization**: stats panel cache dict, crosshair render reuse, i18n dead code cleanup
-- **Fixes**: undo stack depth limit 100, class ID holes, undo/redo button state
+- Annotation/export logic extraction and stats-cache optimization; undo-stack limit, class-ID holes, undo/redo button fixes
 
-### v1.5.0 (2026-04-26)
-- Label font/confidence display controls, simplified window picking, region selection deadlock fix
-
-### v1.0.0~1.4.0 (2026-02-22~2026-04-26)
-- Initial release: manual annotation, YOLO export, model-assisted annotation, dark theme
-- Logging system, theme switching, enhanced model info panel
-- Model training, i18n (Chinese/English dynamic switching)
-- PyInstaller packaging support
-- Realtime verification (window capture, region capture, image detection)
+### v1.x (2026-02-22 ~ 2026-04-26)
+- Initial releases: manual annotation, YOLO export, model-assisted annotation and training, realtime verification, themes/logging/i18n, PyInstaller packaging
 
 
 
